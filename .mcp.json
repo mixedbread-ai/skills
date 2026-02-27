@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "mixedbread": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://www.mcp.mixedbread.com/api/mcp",
+        "--header",
+        "Authorization:${MXBAI_AUTH_HEADER}"
+      ],
+      "env": {
+        "MXBAI_AUTH_HEADER": "Bearer ${MXBAI_API_KEY}"
+      }
+    }
+  }
+}

@@ -1,0 +1,65 @@
+# Mixedbread Skills
+
+Agent skills for building search, RAG, and document intelligence with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, and Gemini CLI.
+
+## Installation
+
+### Claude Code
+
+Install individual skills from the marketplace:
+
+```bash
+claude install-skill mixedbread-ai/mixedbread-skills mxbai-cli
+claude install-skill mixedbread-ai/mixedbread-skills mixedbread-search
+```
+
+### Cursor
+
+Add this repository as a plugin in your Cursor settings, or clone and reference the `.cursor-plugin/` directory.
+
+### Codex
+
+Copy the `agents/AGENTS.md` file into your project, or reference skill files directly:
+
+```bash
+cp agents/AGENTS.md .agents/AGENTS.md
+```
+
+### Gemini CLI
+
+Reference the `.mcp.json` configuration for MCP server integration.
+
+## Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| [`mxbai-cli`](skills/mxbai-cli/SKILL.md) | Manage stores, upload files, search, and sync using the `mxbai` CLI |
+| [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
+
+## Repository Structure
+
+```
+mixedbread-skills/
+├── .claude-plugin/          # Claude Code plugin config
+├── .cursor-plugin/          # Cursor plugin config
+├── .mcp.json                # MCP server config
+├── agents/AGENTS.md         # Codex fallback
+├── CLAUDE.md                # Project conventions
+├── README.md
+├── LICENSE
+└── skills/
+    ├── mxbai-cli/           # CLI tool usage
+    └── mixedbread-search/   # Stores API & SDKs
+```
+
+## Links
+
+- [Documentation](https://www.mixedbread.com/docs)
+- [API Reference](https://www.mixedbread.com/api-reference)
+- [CLI Guide](https://www.mixedbread.com/cli)
+- [Platform (API Keys)](https://platform.mixedbread.com)
+- [GitHub](https://github.com/mixedbread-ai)
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE).
