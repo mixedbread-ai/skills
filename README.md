@@ -1,4 +1,10 @@
-# Mixedbread Skills
+<div align="center">
+  <a href="https://github.com/mixedbread-ai/mgrep">
+    <img src="public/logo_mb.svg" alt="Mixedbread Logo" width="96" height="96" />
+  </a>
+  <h1>Mixedbread Skills</h1>
+  <p><em>All Mixedbread Skills you ever need.</em></p>
+</div>
 
 Agent skills for building search, RAG, and document intelligence with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, and Gemini CLI.
 
