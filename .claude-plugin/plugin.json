@@ -1,11 +1,12 @@
 {
   "name": "mixedbread-skills",
-  "description": "Agent skills for search, RAG, and document intelligence with Mixedbread APIs and CLI.",
+  "description": "Agent skills for search, RAG, and document parsing with Mixedbread.",
   "version": "1.0.0",
   "author": {
     "name": "Mixedbread"
   },
-  "homepage": "https://github.com/mixedbread-ai/mixedbread-skills",
-  "repository": "https://github.com/mixedbread-ai/mixedbread-skills",
-  "license": "Apache-2.0"
+  "homepage": "https://github.com/mixedbread-ai/skills",
+  "repository": "https://github.com/mixedbread-ai/skills",
+  "license": "Apache-2.0",
+  "keywords": ["search", "rag", "parsing", "vector-search"]
 }

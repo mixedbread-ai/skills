@@ -2,6 +2,7 @@
   "name": "mixedbread-skills",
   "displayName": "Mixedbread Skills",
   "version": "1.0.0",
-  "description": "Agent skills for search, RAG, and document intelligence with Mixedbread.",
-  "skills": "./skills/"
+  "description": "Agent skills for search, RAG, and document parsing with Mixedbread.",
+  "skills": "./skills/",
+  "keywords": ["search", "rag", "parsing", "vector-search"]
 }
