@@ -1,6 +1,9 @@
 ---
 name: mxbai-cli
-description: Use the mxbai CLI to manage stores, upload files, search documents, ask questions, and sync directories. Activate when the user needs to perform Mixedbread operations from the terminal, set up CI/CD pipelines, or manage API keys.
+description: >-
+  Use the mxbai CLI to manage stores, upload files, search documents, ask questions, and sync directories
+  from the terminal. Use when performing Mixedbread operations via command line, setting up CI/CD pipelines
+  with store sync, or managing API keys.
 ---
 
 # mxbai CLI
@@ -24,19 +27,23 @@ Resolved in priority order:
 2. **Environment variable:** `export MXBAI_API_KEY=mxb_xxxxx`
 3. **Config file:** `mxbai config set api_key mxb_xxxxx`
 
-Get your API key at https://platform.mixedbread.com
+Get your API key at https://platform.mixedbread.com/platform?next=api-keys
 
 ## Quick Command Reference
 
 | Command | Description |
 |---------|-------------|
 | `mxbai config set api_key <key>` | Save API key to config |
+| `mxbai config keys add <key> [name]` | Add a named API key |
+| `mxbai config keys list` | List saved API keys |
+| `mxbai config keys set-default <name>` | Set default API key |
 | `mxbai store create <name>` | Create a new store |
 | `mxbai store list` | List all stores |
 | `mxbai store get <name>` | Get store details |
 | `mxbai store update <name>` | Update store config |
 | `mxbai store delete <name>` | Delete a store |
 | `mxbai store upload <name> <patterns...>` | Upload files to a store |
+| `mxbai store files list <name>` | List files in a store |
 | `mxbai store search <name> <query>` | Semantic search |
 | `mxbai store qa <name> <question>` | Question answering |
 | `mxbai store sync <name> <patterns...>` | Sync changed files |
@@ -91,6 +98,37 @@ mxbai store upload "my-docs" --manifest upload.yaml
 
 > See [references/file-operations.md](references/file-operations.md) for manifest format and all flags.
 
+## Multipart Upload
+
+Files above 5 MB automatically use multipart upload. Tune with these flags:
+
+```bash
+mxbai store upload "my-docs" "large-files/**" \
+  --multipart-threshold 10 \
+  --multipart-part-size 10 \
+  --multipart-concurrency 4
+```
+
+| Flag | Description |
+|------|-------------|
+| `--multipart-threshold <mb>` | File size in MB to trigger multipart (minimum 5 MB) |
+| `--multipart-part-size <mb>` | Size of each part in MB (minimum 5 MB) |
+| `--multipart-concurrency <n>` | Concurrent part uploads (minimum 1) |
+
+These flags also work with `mxbai store sync`.
+
+## File Status Filtering
+
+List files in a store filtered by processing status:
+
+```bash
+mxbai store files list "my-docs" --status completed
+mxbai store files list "my-docs" --status failed
+mxbai store files list "my-docs" --status in_progress
+```
+
+Valid status values: `all` (default), `completed`, `in_progress`, `failed`.
+
 ## Search
 
 ```bash
@@ -139,6 +177,63 @@ mxbai store sync "my-docs" "docs/**" --yes --from-git HEAD~1
 
 > See [references/sync.md](references/sync.md) for change detection methods and CI/CD patterns.
 
+## API Key Management
+
+```bash
+# Add a named API key
+mxbai config keys add mxb_xxxxx production
+
+# List all saved keys
+mxbai config keys list
+
+# Set the default key
+mxbai config keys set-default production
+
+# Remove a key
+mxbai config keys remove staging --yes
+
+# Use a saved key for a command
+mxbai store list --saved-key production
+```
+
+> See [references/config-and-keys.md](references/config-and-keys.md) for full key management docs.
+
+## Store Aliases
+
+Create short aliases for frequently used stores:
+
+```bash
+# Set aliases
+mxbai config set aliases.docs "my-documentation-store"
+mxbai config set aliases.prod "str_abc123"
+
+# Use aliases in any command
+mxbai store search docs "how to deploy"
+mxbai store upload prod "files/**/*.md"
+```
+
+## Configuration Defaults
+
+```bash
+# Set default parsing strategy
+mxbai config set defaults.upload.strategy high_quality
+
+# Set default parallelism
+mxbai config set defaults.upload.parallel 50
+
+# Set default search results count
+mxbai config set defaults.search.top_k 20
+
+# Enable reranking by default
+mxbai config set defaults.search.rerank true
+```
+
+> See [references/config-and-keys.md](references/config-and-keys.md) for all configuration options.
+
+## Contextualization Deprecation
+
+> **Note:** The `--contextualization` flag on `upload` and `sync` commands is **deprecated** since v2.2.0. Contextualization is now configured at store creation time using `mxbai store create --contextualization`. Using the deprecated flag will show a warning and be ignored.
+
 ## Global Options
 
 | Flag | Description |
@@ -167,11 +262,30 @@ mxbai completion install --shell zsh  # Specific shell
 mxbai completion refresh           # Refresh cache
 ```
 
+## Anti-Patterns
+
+- **Don't use `--contextualization` on upload or sync.** It's deprecated. Configure contextualization at store creation with `mxbai store create --contextualization`.
+- **Don't use `--force` sync in CI unless you intend full re-upload.** Force bypasses change detection and re-uploads everything.
+- **Don't set `--parallel` above 200.** The CLI validates and rejects values above 200.
+- **Don't forget `--yes` in CI/CD.** Without it, sync and delete commands hang waiting for interactive confirmation.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| "Command not found" | Verify Node.js >= 20 is installed. Try `npx mxbai` for project-local installs. |
+| "No API key" | Run `mxbai config keys add <key>` or set `MXBAI_API_KEY` env var. |
+| Upload timeout for large files | Tune multipart flags: `--multipart-threshold`, `--multipart-part-size`, `--multipart-concurrency`. |
+| Sync hangs in CI | Must pass `--yes` for non-interactive mode. CI environments don't have a TTY. |
+| Store not found | Check aliases with `mxbai config get aliases`. Verify store name uses valid characters (lowercase, numbers, hyphens, periods). |
+| Contextualization warning | The `--contextualization` flag on upload/sync is deprecated. Set it at store creation instead. |
+
 ## References
 
 | Topic | Reference |
 |-------|-----------|
 | Store creation, update, deletion | [references/store-management.md](references/store-management.md) |
-| File upload and manifests | [references/file-operations.md](references/file-operations.md) |
+| File upload, manifests, and multipart | [references/file-operations.md](references/file-operations.md) |
 | Search and question answering | [references/search-and-qa.md](references/search-and-qa.md) |
 | Sync and CI/CD workflows | [references/sync.md](references/sync.md) |
+| API keys, defaults, and aliases | [references/config-and-keys.md](references/config-and-keys.md) |

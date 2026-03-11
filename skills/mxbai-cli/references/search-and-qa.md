@@ -176,10 +176,10 @@ Use `mxbai config` to set default values so you do not need to pass them on ever
 
 ```bash
 # Set default top-k for search and QA
-mxbai config set default_top_k 20
+mxbai config set defaults.search.top_k 20
 
 # Enable reranking by default for search
-mxbai config set default_rerank true
+mxbai config set defaults.search.rerank true
 ```
 
 These defaults are overridden by any flags passed directly on the command line.

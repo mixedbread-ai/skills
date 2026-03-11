@@ -18,6 +18,9 @@ Uploads files matching the given glob patterns into a store. Patterns follow sta
 | `--parallel` | Number of concurrent uploads (1-200). Default: `100` |
 | `--unique` | Skip files that have already been uploaded (based on content hash) |
 | `--manifest` | Path to a JSON or YAML manifest file that specifies files, metadata, and strategy per file |
+| `--multipart-threshold` | File size in MB to trigger multipart upload (minimum 5 MB) |
+| `--multipart-part-size` | Size of each part in MB for multipart upload (minimum 5 MB) |
+| `--multipart-concurrency` | Number of concurrent part uploads for multipart upload (minimum 1) |
 
 **Note:** The `--contextualization` flag on upload is **deprecated**. Configure contextualization at store creation time using `mxbai store create --contextualization` instead.
 
@@ -65,6 +68,41 @@ Upload using a manifest file:
 
 ```bash
 mxbai store upload my-docs --manifest upload-manifest.yaml
+```
+
+Upload large files with custom multipart settings:
+
+```bash
+mxbai store upload my-docs "data/**/*.pdf" \
+  --multipart-threshold 10 \
+  --multipart-part-size 10 \
+  --multipart-concurrency 4
+```
+
+Files above the multipart threshold (default 5 MB) are automatically split into parts and uploaded concurrently. The multipart flags are also available on `mxbai store sync`.
+
+## List Files in a Store
+
+```
+mxbai store files list <name-or-id>
+```
+
+| Flag | Description |
+|------|-------------|
+| `--status` | Filter by processing status: `all` (default), `completed`, `in_progress`, `failed` |
+
+### Examples
+
+List all completed files:
+
+```bash
+mxbai store files list my-docs --status completed
+```
+
+List failed files to diagnose issues:
+
+```bash
+mxbai store files list my-docs --status failed
 ```
 
 ### Manifest File Format

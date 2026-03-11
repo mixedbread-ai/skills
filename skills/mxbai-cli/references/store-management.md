@@ -16,7 +16,7 @@ mxbai store create <name>
 | `--expires-after` | Number of days after which the store expires and is deleted |
 | `--metadata` | Arbitrary JSON metadata attached to the store |
 | `--public` | Make the store publicly accessible |
-| `--contextualization` | Enable contextualization. Use `true` for automatic or a comma-separated list of fields (e.g., `title,author`) |
+| `--contextualization` | Enable contextualization. Use `true` for automatic or a comma-separated list of fields (e.g., `title,author`). **Note:** Contextualization is configured at store creation. The `--contextualization` flag on `upload` and `sync` is deprecated. |
 
 ### Examples
 
@@ -203,3 +203,23 @@ mxbai store update old-project-docs \
   --description "Migrated documentation" \
   --metadata '{"migrated": true}'
 ```
+
+## Store Aliases
+
+Create short aliases for store names or IDs to use in any command:
+
+```bash
+# Set an alias
+mxbai config set aliases.docs "my-documentation-store"
+mxbai config set aliases.prod "str_abc123"
+
+# Use aliases in commands
+mxbai store search docs "how to deploy"
+mxbai store upload prod "files/**/*.md"
+mxbai store get docs
+
+# View aliases
+mxbai config get aliases
+```
+
+Aliases are resolved before store name lookup. If an alias matches, the mapped store name or ID is used. See [config-and-keys.md](config-and-keys.md) for more configuration options.

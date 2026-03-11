@@ -17,7 +17,7 @@ POST /v1/stores/search
 | `query` | string \| ImageURLInput \| TextInput | Yes | Search query. String for text, or structured input for images. |
 | `store_identifiers` | string[] | Yes | Store names or IDs to search. Include `"mixedbread/web"` for web results. |
 | `top_k` | int | No | Number of results to return. |
-| `filters` | SearchFilter \| SearchFilterCondition | No | Metadata filters (see [metadata-and-filters.md](metadata-and-filters.md)). |
+| `filters` | SearchFilter \| SearchFilterCondition | No | Metadata filters (see [store-files-api.md](store-files-api.md)). |
 | `file_ids` | string[] | No | Restrict search to specific file IDs. |
 | `search_options` | StoreChunkSearchOptions | No | Advanced search configuration. |
 

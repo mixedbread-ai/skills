@@ -1,14 +1,19 @@
 # Mixedbread Skills
 
-Agent skills for building search, RAG, and document intelligence with [Mixedbread](https://www.mixedbread.com).
+Agent skills for building search, RAG, and document parsing with [Mixedbread](https://www.mixedbread.com).
 
 ## Repository Structure
 
 - `skills/` — Each subdirectory is a self-contained skill with a `SKILL.md` and `references/`
+  - `skills/mxbai-cli/` — CLI tool usage
+  - `skills/mixedbread-search/` — Stores API & SDKs
+  - `skills/mixedbread-parsing/` — Parsing API & OCR
 - `.claude-plugin/` — Claude Code plugin configuration
 - `.cursor-plugin/` — Cursor plugin configuration
 - `.mcp.json` — MCP server configuration
+- `gemini-extension.json` — Gemini CLI extension configuration
 - `agents/AGENTS.md` — Fallback instructions for Codex/OpenAI agents
+- `SKILL_TREE.md` — Navigable index of all skills and reference files
 
 ## Conventions
 
@@ -27,7 +32,10 @@ Agent skills for building search, RAG, and document intelligence with [Mixedbrea
 2. Add a `SKILL.md` with YAML frontmatter (`name`, `description`) and instructions
 3. Add reference docs in `references/` as needed
 4. Update `.claude-plugin/marketplace.json` with the new skill entry
-5. Update the skills table in `README.md`
+5. Update `.cursor-plugin/marketplace.json` with the new skill entry
+6. Update the skills table in `README.md`
+7. Update `agents/AGENTS.md` with the new skill entry
+8. Update `SKILL_TREE.md` with the new skill and its references
 
 ## Key Links
 
