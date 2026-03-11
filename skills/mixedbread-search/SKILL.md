@@ -295,19 +295,13 @@ Set `agentic` to `true` for default settings, or pass an object to control round
 - **Check `file_counts.completed > 0` before searching.** Searching a store with no completed files returns empty results. After uploading, retrieve the store and verify files have finished processing.
 - **Use `metadata_facets()` before building filters.** Don't guess metadata keys — discover them. Typos in filter keys silently return no results.
 - **Enable `rerank` for production search.** Reranking significantly improves relevance. Only skip it for latency-sensitive prototyping.
+- **Use standard search for simple lookups.** Agentic search adds latency from multiple retrieval rounds. Only use it for complex, multi-hop questions.
 
 ### MEDIUM
 - **Set `expires_after` for temporary stores.** PR review stores, demo stores, and test stores should auto-expire to avoid accumulating unused indexes.
 - **One store per knowledge domain, not per query.** Stores are persistent indexes meant to be reused. Create once, search many times.
 - **Use `score_threshold` to filter low-relevance noise.** Without a threshold, you may get results that are technically "closest" but not actually relevant.
-
-## Anti-Patterns
-
-- **Creating a new store per query.** Stores are persistent indexes. Create once, search many times.
-- **Using agentic search for simple lookups.** Agentic search adds latency from multiple retrieval rounds. Use standard search for straightforward queries.
-- **Searching immediately after upload without checking file status.** Files need processing time. Check `file_counts.completed` first.
-- **Guessing metadata filter keys instead of using `metadata_facets()`.** Typos produce empty results with no error.
-- **Using agentic search with high `max_rounds` by default.** Start with `agentic` enabled (uses defaults) and only increase rounds if results are insufficient.
+- **Start with default `agentic` settings.** Only increase `max_rounds` if results are insufficient.
 
 ## Troubleshooting
 

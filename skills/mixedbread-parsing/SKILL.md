@@ -165,19 +165,12 @@ for (const job of jobs) {
 ### HIGH
 - **Specify `element_types` when you only need certain elements.** Requesting all types increases processing time and response size. If you only need tables, set `element_types` to `table` only.
 - **Use `fast` mode for born-digital PDFs.** The `high_quality` mode adds OCR overhead that provides no benefit when text is already selectable.
+- **Check `confidence` scores on OCR output.** Low-confidence elements (< 0.5) may contain errors. Filter or flag them.
 
 ### MEDIUM
 - **Check `job.error` before retrying failed jobs.** Common causes: unsupported file type, corrupt file, file too large. Blindly retrying wastes quota.
 - **Use `content_to_embed` for embedding pipelines.** Each chunk provides both `content` (full text) and `content_to_embed` (optimized for embedding). Use the latter when feeding into vector stores outside Mixedbread.
-
-## Anti-Patterns
-
-- **Re-parsing files already in a Store.** Store upload handles parsing automatically. Use the Parsing API only for standalone extraction or pre-inspection.
-- **Tight-loop polling.** Use `upload_and_poll()` / `create_and_poll()` or `poll()` which handle backoff. Manual polling should use `poll_interval_ms`.
-- **Using `high_quality` mode for plain text files.** It adds OCR overhead with no benefit. Use `fast` for non-scanned documents.
-- **Requesting all element types when you only need a few.** Specify `element_types` to reduce processing time and response size.
-- **Ignoring `confidence` scores.** Low-confidence elements (< 0.5) from OCR may contain errors. Filter or flag them.
-- **Parsing unsupported formats without checking.** Only PDF, Word, PowerPoint, and images are supported. Convert other formats first.
+- **Verify file format before parsing.** Only PDF, Word, PowerPoint, and images are supported. Convert other formats first.
 
 ## Troubleshooting
 

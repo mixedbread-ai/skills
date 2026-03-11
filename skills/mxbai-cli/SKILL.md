@@ -177,14 +177,6 @@ mxbai store upload prod "files/**/*.md"
 - **Use store aliases for frequently-used stores.** Avoids typos and long store names in commands.
 - **Use `--unique` on upload to skip duplicates.** Prevents re-uploading files that already exist (based on content hash).
 
-## Anti-Patterns
-
-- **Using `--contextualization` on upload or sync.** Deprecated. Configure at store creation with `mxbai store create --contextualization`.
-- **Using `--force` sync in CI without intent.** Force bypasses change detection and re-uploads everything. Use `--from-git` for incremental syncs.
-- **Setting `--parallel` above 200.** The CLI rejects it. Stay within the limit.
-- **Forgetting `--yes` in CI/CD.** Commands hang waiting for confirmation in non-interactive environments.
-- **Uploading without `--dry-run` on first run.** Always preview before the first sync to catch glob pattern mistakes.
-
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
