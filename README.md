@@ -44,7 +44,7 @@ Reference the `gemini-extension.json` for extension configuration, or use the `.
 | [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
 | [`mixedbread-parsing`](skills/mixedbread-parsing/SKILL.md) | Parse documents, extract structured content, and run OCR using the Parsing API |
 
-See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills and their reference files.
+See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills.
 
 ## Repository Structure
 

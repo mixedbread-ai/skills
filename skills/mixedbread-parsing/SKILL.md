@@ -11,6 +11,8 @@ description: >-
 
 Parse documents, extract structured content, and run OCR using the Parsing API. Supports PDFs, Word documents, PowerPoint presentations, and images.
 
+Docs: https://www.mixedbread.com/docs/parsing/overview.md
+
 ## Setup
 
 ```bash
@@ -28,10 +30,10 @@ export MXBAI_API_KEY=your_api_key
 ```python
 from mixedbread import Mixedbread
 
-client = Mixedbread()
+mxbai = Mixedbread()
 
 # Upload and parse a document (waits for completion)
-job = client.parsing.jobs.upload_and_poll(
+job = mxbai.parsing.jobs.upload_and_poll(
     file=open("report.pdf", "rb"),
     return_format="markdown",
 )
@@ -45,9 +47,9 @@ for chunk in job.result.chunks:
 import Mixedbread from '@mixedbread/sdk';
 import fs from 'fs';
 
-const client = new Mixedbread();
+const mxbai = new Mixedbread();
 
-const job = await client.parsing.jobs.uploadAndPoll(
+const job = await mxbai.parsing.jobs.uploadAndPoll(
     fs.createReadStream('report.pdf'),
     { return_format: 'markdown' },
 );
@@ -57,130 +59,133 @@ for (const chunk of job.result.chunks) {
 }
 ```
 
-## Parsing API
+## Decision Tree
 
-| Operation | Python | TypeScript |
-|-----------|--------|------------|
-| Create job | `client.parsing.jobs.create(file_id=...)` | `client.parsing.jobs.create({ file_id })` |
-| Upload + create | `client.parsing.jobs.upload(file=...)` | `client.parsing.jobs.upload(file, {...})` |
-| Upload + poll | `client.parsing.jobs.upload_and_poll(file=...)` | `client.parsing.jobs.uploadAndPoll(file, {...})` |
-| Create + poll | `client.parsing.jobs.create_and_poll(file_id=...)` | `client.parsing.jobs.createAndPoll({ file_id })` |
-| Poll job | `client.parsing.jobs.poll(job_id=...)` | `client.parsing.jobs.poll(jobId)` |
-| Retrieve job | `client.parsing.jobs.retrieve(job_id=...)` | `client.parsing.jobs.retrieve(jobId)` |
-| List jobs | `client.parsing.jobs.list()` | `client.parsing.jobs.list()` |
-| Cancel job | `client.parsing.jobs.cancel(job_id=...)` | `client.parsing.jobs.cancel(jobId)` |
-| Delete job | `client.parsing.jobs.delete(job_id=...)` | `client.parsing.jobs.delete(jobId)` |
-
-## Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `file_id` | string | — | ID of a previously uploaded file (required for `create`) |
-| `element_types` | ElementType[] | all | Which element types to extract |
-| `chunking_strategy` | string | `"page"` | How to chunk the document. Currently only `"page"` |
-| `return_format` | string | `"markdown"` | Output format: `"html"`, `"markdown"`, or `"plain"` |
-| `mode` | string | `"high_quality"` | OCR mode: `"fast"` or `"high_quality"` |
+- **Which convenience method?**
+  - File on disk → `upload_and_poll()` (uploads + creates job + polls)
+  - File already uploaded via Files API → `create_and_poll()` (creates job + polls)
+  - Need async control → `upload()` or `create()` then `poll()` separately
+- **Which parsing mode?**
+  - Born-digital PDF (selectable text) → `fast` mode
+  - Scanned document or image → `high_quality` mode
+- **Need specific elements only?** → Set `element_types` to reduce processing time
 
 ## Supported File Types
 
-| Category | Formats |
-|----------|---------|
-| PDF | `.pdf` |
-| Word | `.doc`, `.docx`, `.dotx`, `.docm`, `.dotm`, `.odt`, `.rtf` |
-| Slides | `.ppt`, `.pptx`, `.ppsx`, `.pptm`, `.potm`, `.ppsm`, `.odp` |
-| Images | `.jpeg`, `.png`, `.webp`, `.avif` |
+PDF (`.pdf`), Word (`.doc`, `.docx`, `.dotx`, `.docm`, `.dotm`, `.odt`, `.rtf`), Slides (`.ppt`, `.pptx`, `.ppsx`, `.pptm`, `.potm`, `.ppsm`, `.odp`), Images (`.jpeg`, `.png`, `.webp`, `.avif`).
 
-## Element Types
+Element types: `text`, `title`, `section-header`, `header`, `footer`, `page-number`, `list-item`, `figure`, `picture`, `table`, `form`, `footnote`, `caption`, `formula`.
 
-| Type | Description |
-|------|-------------|
-| `text` | Regular text content |
-| `title` | Document titles |
-| `section-header` | Section headers |
-| `header` | Page headers |
-| `footer` | Page footers |
-| `page-number` | Page numbers |
-| `list-item` | Items in lists |
-| `figure` | Figures and images |
-| `picture` | Pictures and photos |
-| `table` | Tables |
-| `form` | Form elements |
-| `footnote` | Footnotes |
-| `caption` | Image/table captions |
-| `formula` | Mathematical formulas |
+## Workflows
 
-## Response Structure
+### Extract Tables from Documents
 
-```
-ParsingJob
-  ├── id, file_id, filename, status
-  ├── error (if failed)
-  └── result (DocumentParserResult)
-       ├── chunking_strategy, return_format, element_types
-       ├── page_sizes: [[width, height], ...]
-       └── chunks[]
-            ├── content (full chunk text)
-            ├── content_to_embed (optimized for embedding)
-            └── elements[]
-                 ├── type (ElementType)
-                 ├── confidence (0.0–1.0)
-                 ├── bbox [x1, y1, x2, y2]
-                 ├── page (page number)
-                 ├── content (element text)
-                 ├── summary (optional brief summary)
-                 └── image (optional base64 for figures)
-```
+Filter for table elements to pull structured data from reports.
 
-Job statuses: `pending` → `in_progress` → `completed` | `failed` | `cancelled`
-
-## Parsing with Specific Elements
-
+**Python:**
 ```python
-job = client.parsing.jobs.upload_and_poll(
-    file=open("report.pdf", "rb"),
-    element_types=["table", "figure", "text"],
+job = mxbai.parsing.jobs.upload_and_poll(
+    file=open("financial-report.pdf", "rb"),
+    element_types=["table"],
     return_format="html",
     mode="high_quality",
 )
-
 for chunk in job.result.chunks:
     for element in chunk.elements:
-        print(f"[{element.type}] confidence={element.confidence:.2f} page={element.page}")
-        print(element.content[:200])
+        if element.type == "table":
+            print(f"Page {element.page}, confidence {element.confidence:.2f}")
+            print(element.content)
 ```
 
-## Two-Step Workflow (Upload Then Parse)
+**TypeScript:**
+```typescript
+const job = await mxbai.parsing.jobs.uploadAndPoll(
+    fs.createReadStream('financial-report.pdf'),
+    { element_types: ['table'], return_format: 'html', mode: 'high_quality' },
+);
+for (const chunk of job.result.chunks) {
+    for (const element of chunk.elements) {
+        if (element.type === 'table') {
+            console.log(`Page ${element.page}, confidence ${element.confidence.toFixed(2)}`);
+            console.log(element.content);
+        }
+    }
+}
+```
 
+### Batch Parse Multiple Files
+
+Upload multiple files asynchronously, then poll all jobs:
+
+**Python:**
 ```python
-# Step 1: Upload file
-file_obj = client.files.create(file=open("slides.pptx", "rb"))
+import os
 
-# Step 2: Create parsing job and poll
-job = client.parsing.jobs.create_and_poll(
-    file_id=file_obj.id,
-    return_format="markdown",
-)
+jobs = []
+for filename in os.listdir("./documents"):
+    if filename.endswith(".pdf"):
+        job = mxbai.parsing.jobs.upload(
+            file=open(f"./documents/{filename}", "rb"),
+            return_format="markdown",
+        )
+        jobs.append(job)
+
+# Poll all jobs
+for job in jobs:
+    completed = mxbai.parsing.jobs.poll(job_id=job.id)
+    print(f"{completed.filename}: {len(completed.result.chunks)} chunks")
 ```
+
+**TypeScript:**
+```typescript
+import { readdirSync, createReadStream } from 'fs';
+import path from 'path';
+
+const files = readdirSync('./documents').filter(f => f.endsWith('.pdf'));
+const jobs = await Promise.all(
+    files.map(f => mxbai.parsing.jobs.upload(
+        createReadStream(path.join('./documents', f)),
+        { return_format: 'markdown' },
+    )),
+);
+
+// Poll all jobs
+for (const job of jobs) {
+    const completed = await mxbai.parsing.jobs.poll(job.id);
+    console.log(`${completed.filename}: ${completed.result.chunks.length} chunks`);
+}
+```
+
+## Rules
+
+### CRITICAL
+- **Don't double-parse.** Store uploads auto-parse documents. If you upload to a Store, do NOT also run the Parsing API on the same file. Use the Parsing API only for standalone document extraction.
+- **Use `upload_and_poll()` / `create_and_poll()` instead of manual polling loops.** These methods handle backoff automatically. Manual `while` loops with `retrieve()` are fragile and waste API calls.
+
+### HIGH
+- **Specify `element_types` when you only need certain elements.** Requesting all types increases processing time and response size. If you only need tables, set `element_types` to `table` only.
+- **Use `fast` mode for born-digital PDFs.** The `high_quality` mode adds OCR overhead that provides no benefit when text is already selectable.
+
+### MEDIUM
+- **Check `job.error` before retrying failed jobs.** Common causes: unsupported file type, corrupt file, file too large. Blindly retrying wastes quota.
+- **Use `content_to_embed` for embedding pipelines.** Each chunk provides both `content` (full text) and `content_to_embed` (optimized for embedding). Use the latter when feeding into vector stores outside Mixedbread.
 
 ## Anti-Patterns
 
-- **Don't re-parse files already in a Store.** Store upload handles parsing automatically. Use the Parsing API only for standalone document extraction.
-- **Don't tight-loop poll.** Use `upload_and_poll()` / `create_and_poll()` or `poll()` which handle backoff automatically. Manual polling should use `poll_interval_ms`.
-- **Don't use `high_quality` mode for plain text files.** It adds OCR overhead with no benefit. Use `fast` for non-scanned documents.
-- **Don't request all element types when you only need a few.** Specify `element_types` to reduce processing time and response size.
+- **Re-parsing files already in a Store.** Store upload handles parsing automatically. Use the Parsing API only for standalone extraction or pre-inspection.
+- **Tight-loop polling.** Use `upload_and_poll()` / `create_and_poll()` or `poll()` which handle backoff. Manual polling should use `poll_interval_ms`.
+- **Using `high_quality` mode for plain text files.** It adds OCR overhead with no benefit. Use `fast` for non-scanned documents.
+- **Requesting all element types when you only need a few.** Specify `element_types` to reduce processing time and response size.
+- **Ignoring `confidence` scores.** Low-confidence elements (< 0.5) from OCR may contain errors. Filter or flag them.
+- **Parsing unsupported formats without checking.** Only PDF, Word, PowerPoint, and images are supported. Convert other formats first.
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| Job stuck in `pending` | The queue may be busy. Use `poll()` with a longer `poll_timeout_ms`. Check job status with `retrieve()`. |
-| Job status `failed` | Check `job.error` for details. Common causes: unsupported file type, corrupt file, file too large. |
-| Empty chunks in result | Verify the file has extractable content (not a blank page). Try `mode="high_quality"` for scanned documents. |
-| Unsupported file type | Parsing supports PDF, Word, PowerPoint, and images (JPEG, PNG, WebP, AVIF). Convert other formats first. |
-| Low confidence scores | Use `mode="high_quality"` for better OCR accuracy on scanned or low-resolution documents. |
-
-## References
-
-| Topic | Reference |
-|-------|-----------|
-| Parsing API endpoints and response models | [references/parsing-api.md](references/parsing-api.md) |
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Job stuck in `pending` | Queue is busy | Use `poll()` with a longer `poll_timeout_ms`. Check job status with `retrieve()`. |
+| Job status `failed` | Unsupported file type, corrupt file, or file too large | Check `job.error` for details. Verify file format is supported. |
+| Empty chunks in result | File has no extractable content (blank pages) | Verify the file has content. Try `high_quality` mode for scanned documents. |
+| Low confidence scores | Scanned or low-resolution source | Use `high_quality` mode for better OCR accuracy. |
+| Missing tables or figures | Element types not requested | Set `element_types` to include `table` and `figure` explicitly. |
+| `upload_and_poll()` timeout | Very large document or slow processing | Increase `poll_timeout_ms`, or use `upload()` + `poll()` separately for more control. |
