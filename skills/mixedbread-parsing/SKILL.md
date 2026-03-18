@@ -12,6 +12,8 @@ description: >-
 Parse documents, extract structured content, and run OCR using the Parsing API. Supports PDFs, Word documents, PowerPoint presentations, and images.
 
 Docs: https://www.mixedbread.com/docs/parsing/overview.md
+Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
+Latest docs search: https://www.mixedbread.com/question?q=parsing&section=docs
 
 ## Setup
 

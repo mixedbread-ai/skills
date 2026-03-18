@@ -11,6 +11,8 @@ description: >-
 The `mxbai` CLI manages stores, uploads files, performs semantic search, and syncs directories with Mixedbread from the terminal.
 
 Docs: https://www.mixedbread.com/cli.md
+Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
+Latest docs search: https://www.mixedbread.com/question?q=cli&section=cli
 
 ## Installation
 

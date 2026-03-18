@@ -12,6 +12,8 @@ description: >-
 Create and search managed knowledge bases using the Stores API. Stores are multimodal search indexes that handle text, images, tables, audio, and video across 100+ languages.
 
 Docs: https://www.mixedbread.com/docs/stores/overview.md
+Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
+Latest docs search: https://www.mixedbread.com/question?q=stores&section=docs
 
 ## Setup
 
@@ -88,7 +90,7 @@ const results = await mxbai.stores.search({
 
 ### Build a Searchable Knowledge Base
 
-Create a store, upload documents, verify they're processed, then search.
+Create a store, upload documents, and search. Most of the time you do not need to poll for finished files. Only gate on processing when the workflow depends on complete batch coverage, such as benchmarks or recall evaluation.
 
 **Python:**
 ```python
@@ -103,18 +105,17 @@ store = mxbai.stores.create(
 mxbai.stores.files.upload(store_identifier=store.id, file=open("guide.pdf", "rb"))
 mxbai.stores.files.upload(store_identifier=store.id, file=open("faq.md", "rb"))
 
-# 3. Verify files are processed
-store = mxbai.stores.retrieve("product-docs")
-print(f"Completed: {store.file_counts.completed}, In progress: {store.file_counts.in_progress}")
-# Wait until file_counts.completed > 0 before searching
-
-# 4. Search
+# 3. Search
 results = mxbai.stores.search(
     query="How do I reset my password?",
     store_identifiers=["product-docs"],
     top_k=5,
     search_options={"rerank": True},
 )
+
+# Most of the time you do not need this poll.
+# Optional: if you need deterministic full-batch coverage (for example benchmarks),
+# retrieve the store and wait until the expected files are completed before evaluating results.
 ```
 
 **TypeScript:**
@@ -130,18 +131,17 @@ const store = await mxbai.stores.create({
 await mxbai.stores.files.upload(store.id, { file: fs.createReadStream('guide.pdf') });
 await mxbai.stores.files.upload(store.id, { file: fs.createReadStream('faq.md') });
 
-// 3. Verify files are processed
-const updated = await mxbai.stores.retrieve('product-docs');
-console.log(`Completed: ${updated.file_counts.completed}, In progress: ${updated.file_counts.in_progress}`);
-// Wait until file_counts.completed > 0 before searching
-
-// 4. Search
+// 3. Search
 const results = await mxbai.stores.search({
     query: 'How do I reset my password?',
     store_identifiers: ['product-docs'],
     top_k: 5,
     search_options: { rerank: true },
 });
+
+// Most of the time you do not need this poll.
+// Optional: if you need deterministic full-batch coverage (for example benchmarks),
+// retrieve the store and wait until the expected files are completed before evaluating results.
 ```
 
 ### Filter-Driven Search
@@ -292,7 +292,7 @@ Set `agentic` to `true` for default settings, or pass an object to control round
 - **Store names must be lowercase letters, numbers, hyphens, and periods only.** Invalid names cause creation to fail. No spaces, underscores, or uppercase.
 
 ### HIGH
-- **Check `file_counts.completed > 0` before searching.** Searching a store with no completed files returns empty results. After uploading, retrieve the store and verify files have finished processing.
+- **Do not block on full ingestion unless completeness matters.** Stores process files asynchronously, and completed files become searchable as they finish. Most of the time, especially for interactive flows, upload and search immediately without polling. Poll file status or `file_counts` only when the workflow depends on complete batch coverage, such as benchmarks, migrations, or sync verification.
 - **Use `metadata_facets()` before building filters.** Don't guess metadata keys — discover them. Typos in filter keys silently return no results.
 - **Enable `rerank` for production search.** Reranking significantly improves relevance. Only skip it for latency-sensitive prototyping.
 - **Use standard search for simple lookups.** Agentic search adds latency from multiple retrieval rounds. Only use it for complex, multi-hop questions.
@@ -307,7 +307,7 @@ Set `agentic` to `true` for default settings, or pass an object to control round
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| No results returned | Store has no completed files | Check `store.file_counts.completed > 0`. Wait for processing to finish. |
+| No results returned | Newly uploaded files are still processing, or the store name/query is wrong | Retry after processing completes for at least one file. For completeness-sensitive runs, verify the expected files are `completed` before evaluating results. |
 | No results returned | `score_threshold` too high | Lower or remove `score_threshold`. |
 | No results returned | Wrong `store_identifiers` | Verify the store name or ID matches exactly. |
 | Metadata filters return nothing | Wrong key name or value | Use `metadata_facets()` to discover actual keys and values. |
