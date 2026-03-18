@@ -1,40 +1,60 @@
 <div align="center">
-  <a href="https://github.com/mixedbread-ai/mgrep">
+  <a href="https://github.com/mixedbread-ai/skills">
     <img src="public/logo_mb.svg" alt="Mixedbread Logo" width="96" height="96" />
   </a>
   <h1>Mixedbread Skills</h1>
   <p><em>All Mixedbread Skills you ever need.</em></p>
 </div>
 
-Agent skills for building search, RAG, and document parsing with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, and Gemini CLI.
+Agent skills for building search, RAG, and document parsing with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, Gemini CLI, and [20+ other agents](https://skills.sh/).
 
 ## Installation
 
-### Claude Code
-
-Install individual skills from the marketplace:
+Install all skills with one command (works with Claude Code, Cursor, Codex, Gemini CLI, and more):
 
 ```bash
-claude install-skill mixedbread-ai/mixedbread-skills mxbai-cli
-claude install-skill mixedbread-ai/mixedbread-skills mixedbread-search
-claude install-skill mixedbread-ai/mixedbread-skills mixedbread-parsing
+npx skills add mixedbread-ai/skills
 ```
 
-### Cursor
+Or install globally for all projects:
+
+```bash
+npx skills add mixedbread-ai/skills -g
+```
+
+Browse on the registry: [skills.sh/mixedbread-ai/skills](https://skills.sh/mixedbread-ai/skills)
+
+### Platform-Specific Alternatives
+
+<details>
+<summary>Claude Code</summary>
+
+```bash
+claude install-skill mixedbread-ai/skills mxbai-cli
+claude install-skill mixedbread-ai/skills mixedbread-search
+claude install-skill mixedbread-ai/skills mixedbread-parsing
+```
+</details>
+
+<details>
+<summary>Cursor</summary>
 
 Add this repository as a plugin in your Cursor settings, or clone and reference the `.cursor-plugin/` directory.
+</details>
 
-### Codex
-
-Copy the `agents/AGENTS.md` file into your project, or reference skill files directly:
+<details>
+<summary>Codex</summary>
 
 ```bash
 cp agents/AGENTS.md .agents/AGENTS.md
 ```
+</details>
 
-### Gemini CLI
+<details>
+<summary>Gemini CLI</summary>
 
 Reference the `gemini-extension.json` for extension configuration, or use the `.mcp.json` for MCP server integration.
+</details>
 
 ## Available Skills
 

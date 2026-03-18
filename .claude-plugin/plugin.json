@@ -5,7 +5,7 @@
   "author": {
     "name": "Mixedbread"
   },
-  "homepage": "https://github.com/mixedbread-ai/skills",
+  "homepage": "https://skills.sh/mixedbread-ai/skills",
   "repository": "https://github.com/mixedbread-ai/skills",
   "license": "Apache-2.0",
   "keywords": ["search", "rag", "parsing", "vector-search"]
