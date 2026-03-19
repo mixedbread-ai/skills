@@ -30,17 +30,19 @@ export MXBAI_API_KEY=your_api_key
 
 **Python:**
 ```python
+import os
 from mixedbread import Mixedbread
 
-mxbai = Mixedbread()
+mxbai = Mixedbread(api_key=os.environ["MXBAI_API_KEY"])
 
-# Create a store
 store = mxbai.stores.create(name="my-docs", description="Product documentation")
 
-# Upload a file
-mxbai.stores.files.upload(store_identifier=store.id, file=open("guide.pdf", "rb"))
+mxbai.stores.files.upload(
+    store_identifier=store.id,
+    file=open("guide.pdf", "rb"),
+    metadata={"category": "guides", "version": "2.0"},
+)
 
-# Search
 results = mxbai.stores.search(
     query="How does authentication work?",
     store_identifiers=["my-docs"],
@@ -52,17 +54,23 @@ for chunk in results.data:
 
 **TypeScript:**
 ```typescript
-import Mixedbread from '@mixedbread/sdk';
+import { Mixedbread } from '@mixedbread/sdk';
 import fs from 'fs';
 
-const mxbai = new Mixedbread();
+const mxbai = new Mixedbread({
+    apiKey: process.env.MXBAI_API_KEY!,
+});
 
 const store = await mxbai.stores.create({
     name: 'my-docs',
     description: 'Product documentation',
 });
 
-await mxbai.stores.files.upload(store.id, { file: fs.createReadStream('guide.pdf') });
+await mxbai.stores.files.upload({
+    storeIdentifier: store.id,
+    file: fs.createReadStream('guide.pdf'),
+    body: { metadata: { category: 'guides', version: '2.0' } },
+});
 
 const results = await mxbai.stores.search({
     query: 'How does authentication work?',
@@ -82,7 +90,7 @@ const results = await mxbai.stores.search({
   - Don't know what metadata exists → Call `metadata_facets()` first
   - Know the fields → Build `filters` with `all`/`any`/`none` combinators
 - **Do you need higher relevance?**
-  - Yes → Enable `rerank` in `search_options`
+  - Yes → Set `"rerank": true` in `search_options`, or use `{"rerank": {"model": "mixedbread-ai/mxbai-rerank-large-v2"}}` to choose a model
 - **Is the store temporary (e.g., PR review)?**
   - Yes → Set `expires_after` with a day limit at creation
 
@@ -94,54 +102,62 @@ Create a store, upload documents, and search. Most of the time you do not need t
 
 **Python:**
 ```python
-# 1. Create the store
 store = mxbai.stores.create(
     name="product-docs",
     description="Product documentation",
-    config={"contextualization": True},
+    config={"contextualization": {"with_metadata": ["title", "category"]}},
 )
 
-# 2. Upload files
-mxbai.stores.files.upload(store_identifier=store.id, file=open("guide.pdf", "rb"))
-mxbai.stores.files.upload(store_identifier=store.id, file=open("faq.md", "rb"))
+mxbai.stores.files.upload(
+    store_identifier=store.id,
+    file=open("guide.pdf", "rb"),
+    metadata={"title": "Setup Guide", "category": "guides"},
+)
+mxbai.stores.files.upload(
+    store_identifier=store.id,
+    file=open("faq.md", "rb"),
+    metadata={"title": "FAQ", "category": "support"},
+)
 
-# 3. Search
 results = mxbai.stores.search(
     query="How do I reset my password?",
     store_identifiers=["product-docs"],
     top_k=5,
-    search_options={"rerank": True},
+    search_options={"rerank": True, "return_metadata": True},
 )
+for chunk in results.data:
+    print(f"{chunk.score:.3f} | {chunk.filename}: {chunk.text[:100]}")
 
-# Most of the time you do not need this poll.
-# Optional: if you need deterministic full-batch coverage (for example benchmarks),
-# retrieve the store and wait until the expected files are completed before evaluating results.
+# Optional: poll store.file_counts if you need deterministic full-batch coverage (benchmarks, migrations).
 ```
 
 **TypeScript:**
 ```typescript
-// 1. Create the store
 const store = await mxbai.stores.create({
     name: 'product-docs',
     description: 'Product documentation',
-    config: { contextualization: true },
+    config: { contextualization: { with_metadata: ['title', 'category'] } },
 });
 
-// 2. Upload files
-await mxbai.stores.files.upload(store.id, { file: fs.createReadStream('guide.pdf') });
-await mxbai.stores.files.upload(store.id, { file: fs.createReadStream('faq.md') });
+await mxbai.stores.files.upload({
+    storeIdentifier: store.id,
+    file: fs.createReadStream('guide.pdf'),
+    body: { metadata: { title: 'Setup Guide', category: 'guides' } },
+});
+await mxbai.stores.files.upload({
+    storeIdentifier: store.id,
+    file: fs.createReadStream('faq.md'),
+    body: { metadata: { title: 'FAQ', category: 'support' } },
+});
 
-// 3. Search
 const results = await mxbai.stores.search({
     query: 'How do I reset my password?',
     store_identifiers: ['product-docs'],
     top_k: 5,
-    search_options: { rerank: true },
+    search_options: { rerank: true, return_metadata: true },
 });
 
-// Most of the time you do not need this poll.
-// Optional: if you need deterministic full-batch coverage (for example benchmarks),
-// retrieve the store and wait until the expected files are completed before evaluating results.
+// Optional: poll store.file_counts if you need deterministic full-batch coverage (benchmarks, migrations).
 ```
 
 ### Filter-Driven Search
@@ -150,12 +166,10 @@ Discover available metadata, then build targeted filters.
 
 **Python:**
 ```python
-# 1. Discover what metadata exists
 facets = mxbai.stores.metadata_facets(store_identifiers=["product-docs"])
-for facet in facets.data:
-    print(f"{facet.key}: {facet.values}")
+for key, values in facets.facets.items():
+    print(f"{key}: {values}")
 
-# 2. Build a filter based on discovered facets
 results = mxbai.stores.search(
     query="deployment guide",
     store_identifiers=["product-docs"],
@@ -172,15 +186,13 @@ results = mxbai.stores.search(
 
 **TypeScript:**
 ```typescript
-// 1. Discover what metadata exists
 const facets = await mxbai.stores.metadataFacets({
     store_identifiers: ['product-docs'],
 });
-for (const facet of facets.data) {
-    console.log(`${facet.key}: ${JSON.stringify(facet.values)}`);
+for (const [key, values] of Object.entries(facets.facets ?? {})) {
+    console.log(`${key}: ${JSON.stringify(values)}`);
 }
 
-// 2. Build a filter based on discovered facets
 const results = await mxbai.stores.search({
     query: 'deployment guide',
     store_identifiers: ['product-docs'],
@@ -219,7 +231,7 @@ const results = await mxbai.stores.search({
 
 ### Question Answering
 
-Get a generated answer with cited sources.
+Get a generated answer with cited sources. The answer may contain `<cite i="n"/>` tags referencing the sources list.
 
 **Python:**
 ```python
@@ -250,9 +262,40 @@ for (const source of result.sources) {
 }
 ```
 
+### Question Answering with Agentic Fallback
+
+When QA returns no sources, retry with agentic search for deeper retrieval. Always re-call `question_answering()` — do not fall back to raw `search()`, which loses the generated answer.
+
+**Python:**
+```python
+result = mxbai.stores.question_answering(
+    query="Compare the pricing tiers and their feature differences",
+    store_identifiers=["my-docs"],
+    top_k=10,
+    qa_options={"cite": True},
+    search_options={"rerank": True},
+)
+
+if not result.sources:
+    result = mxbai.stores.question_answering(
+        query="Compare the pricing tiers and their feature differences",
+        store_identifiers=["my-docs"],
+        top_k=10,
+        qa_options={"cite": True},
+        search_options={
+            "rerank": True,
+            "agentic": {"max_rounds": 3},
+        },
+    )
+
+print(result.answer)
+for source in result.sources:
+    print(f"  {source.filename} (score: {source.score:.3f})")
+```
+
 ### Agentic Search
 
-For complex questions requiring multi-step retrieval. The system decomposes your query into sub-queries and runs multiple rounds.
+For complex questions requiring multi-step retrieval. The system decomposes your query into sub-queries and runs multiple rounds. Works in both `search()` and `question_answering()`.
 
 **Python:**
 ```python
@@ -263,7 +306,6 @@ results = mxbai.stores.search(
         "agentic": {
             "max_rounds": 3,
             "queries_per_round": 2,
-            "results_per_query": 5,
         }
     },
 )
@@ -278,18 +320,62 @@ const results = await mxbai.stores.search({
         agentic: {
             max_rounds: 3,
             queries_per_round: 2,
-            results_per_query: 5,
         },
     },
 });
 ```
 
-Set `agentic` to `true` for default settings, or pass an object to control rounds, queries per round, and results per query.
+Set `agentic` to `true` for default settings, or pass an object to control `max_rounds` and `queries_per_round`.
+
+## Response Shapes
+
+**Search results** (`search()` returns):
+```python
+response.data  # list of chunks
+chunk.text       # str — the matched text
+chunk.score      # float — relevance score (0–1)
+chunk.filename   # str — source file name
+chunk.file_id    # str — source file ID
+chunk.store_id   # str — store the chunk belongs to
+chunk.metadata   # dict — attached metadata (when return_metadata is enabled)
+chunk.type       # str — chunk type (e.g. "text", "image_url")
+chunk.image_url  # dict | None — image payload for image chunks
+chunk.ocr_text   # str | None — OCR text for image-heavy chunks
+```
+
+**QA results** (`question_answering()` returns):
+```python
+result.answer    # str — generated answer, may contain <cite i="n"/> tags
+result.sources   # list of source objects
+source.filename  # str
+source.score     # float
+source.file_id   # str
+source.text      # str — the source chunk text
+source.image_url # dict | None — image payload with url/format for image chunks
+```
+
+## Store Management
+
+```python
+stores = mxbai.stores.list(limit=20)
+for store in stores.data:
+    print(store.name)
+
+store = mxbai.stores.retrieve(store_identifier="my-docs")
+print(store.file_counts)  # {"completed": 5, "in_progress": 2, "failed": 0}
+
+mxbai.stores.delete(store_identifier="my-docs")
+
+files = mxbai.stores.files.list(store_identifier="my-docs", limit=20)
+for file in files.data:
+    print(file.filename, file.status)
+```
 
 ## Rules
 
 ### CRITICAL
 - **Store names must be lowercase letters, numbers, hyphens, and periods only.** Invalid names cause creation to fail. No spaces, underscores, or uppercase.
+- **For field-level contextualization, use the documented `{"with_metadata": [...]}` form.** The other documented modes are `true` (all metadata) and `false` (none). Dot notation is supported for nested fields.
 
 ### HIGH
 - **Do not block on full ingestion unless completeness matters.** Stores process files asynchronously, and completed files become searchable as they finish. Most of the time, especially for interactive flows, upload and search immediately without polling. Poll file status or `file_counts` only when the workflow depends on complete batch coverage, such as benchmarks, migrations, or sync verification.
@@ -300,7 +386,7 @@ Set `agentic` to `true` for default settings, or pass an object to control round
 ### MEDIUM
 - **Set `expires_after` for temporary stores.** PR review stores, demo stores, and test stores should auto-expire to avoid accumulating unused indexes.
 - **One store per knowledge domain, not per query.** Stores are persistent indexes meant to be reused. Create once, search many times.
-- **Use `score_threshold` to filter low-relevance noise.** Without a threshold, you may get results that are technically "closest" but not actually relevant.
+- **Use chunk scores to filter low-relevance noise.** If you need a minimum relevance cutoff, post-filter on `chunk.score` (for example `>= 0.3`) after retrieval.
 - **Start with default `agentic` settings.** Only increase `max_rounds` if results are insufficient.
 
 ## Troubleshooting
@@ -308,7 +394,7 @@ Set `agentic` to `true` for default settings, or pass an object to control round
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No results returned | Newly uploaded files are still processing, or the store name/query is wrong | Retry after processing completes for at least one file. For completeness-sensitive runs, verify the expected files are `completed` before evaluating results. |
-| No results returned | `score_threshold` too high | Lower or remove `score_threshold`. |
+| No results returned | Score cutoff too high | Lower or remove your post-filter threshold. |
 | No results returned | Wrong `store_identifiers` | Verify the store name or ID matches exactly. |
 | Metadata filters return nothing | Wrong key name or value | Use `metadata_facets()` to discover actual keys and values. |
 | Slow agentic search | Too many rounds or queries | Reduce `max_rounds` or `queries_per_round`. Use standard search if the query is simple. |
