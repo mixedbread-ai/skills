@@ -68,8 +68,8 @@ for (const chunk of job.result.chunks) {
   - File already uploaded via Files API → `create_and_poll()` (creates job + polls)
   - Need async control → `upload()` or `create()` then `poll()` separately
 - **Which parsing mode?**
-  - Born-digital PDF (selectable text) → `fast` mode
-  - Scanned document or image → `high_quality` mode
+  - Born-digital PDF (selectable text) → `fast` mode. Fastest, lowest cost. Extracts text, structure, and layout.
+  - Scanned document, image, or complex layout → `high_quality` mode. Uses OCR. Extracts text with confidence scores, handles rotated/skewed pages, multi-column layouts.
 - **Need specific elements only?** → Set `element_types` to reduce processing time
 
 ## Supported File Types
@@ -161,7 +161,7 @@ for (const job of jobs) {
 ## Rules
 
 ### CRITICAL
-- **Don't double-parse.** Store uploads auto-parse documents. If you upload to a Store, do NOT also run the Parsing API on the same file. Use the Parsing API only for standalone document extraction.
+- **Don't double-parse.** Store uploads auto-parse documents. Files uploaded with `parsing_strategy: "high_quality"` automatically get OCR text (images), summaries (images), and transcriptions (audio & video) extracted. These are available as fields on search result chunks. There is no benefit to also running the Parsing API on the same file. Use the Parsing API only for standalone document extraction outside of stores.
 - **Use `upload_and_poll()` / `create_and_poll()` instead of manual polling loops.** These methods handle backoff automatically. Manual `while` loops with `retrieve()` are fragile and waste API calls.
 
 ### HIGH

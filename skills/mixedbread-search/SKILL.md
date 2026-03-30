@@ -91,6 +91,9 @@ const results = await mxbai.stores.search({
   - Know the fields → Build `filters` with `all`/`any`/`none` combinators
 - **Do you need higher relevance?**
   - Yes → Set `"rerank": true` in `search_options`, or use `{"rerank": {"model": "mixedbread-ai/mxbai-rerank-large-v2"}}` to choose a model
+- **Do you need OCR, summaries, or transcriptions from files?**
+  - Yes → Upload files with `config: {"parsing_strategy": "high_quality"}`. Stores auto-extract OCR text, summaries, and transcriptions — no separate parsing needed.
+  - No / text-only documents → Default `parsing_strategy` (`"fast"`) is sufficient.
 - **Is the store temporary (e.g., PR review)?**
   - Yes → Set `expires_after` with a day limit at creation
 
@@ -341,6 +344,8 @@ chunk.metadata   # dict — attached metadata (when return_metadata is enabled)
 chunk.type       # str — chunk type (e.g. "text", "image_url")
 chunk.image_url  # dict | None — image payload for image chunks
 chunk.ocr_text   # str | None — OCR text for image-heavy chunks
+chunk.summary    # str | None — auto-generated summary for image chunks (high_quality mode)
+chunk.transcription # str | None — transcription for audio/video chunks (high_quality mode)
 ```
 
 **QA results** (`question_answering()` returns):
@@ -381,6 +386,7 @@ for file in files.data:
 - **Do not block on full ingestion unless completeness matters.** Stores process files asynchronously, and completed files become searchable as they finish. Most of the time, especially for interactive flows, upload and search immediately without polling. Poll file status or `file_counts` only when the workflow depends on complete batch coverage, such as benchmarks, migrations, or sync verification.
 - **Use `metadata_facets()` before building filters.** Don't guess metadata keys — discover them. Typos in filter keys silently return no results.
 - **Enable `rerank` for production search.** Reranking significantly improves relevance. Only skip it for latency-sensitive prototyping.
+- **Use `parsing_strategy: "high_quality"` to enable automatic content extraction.** When set in per-file config at upload time, high quality mode extracts OCR text and summaries for images, and transcriptions for audio and video. These fields are directly usable as LLM context. The default `"fast"` strategy indexes content without these additional extractions.
 - **Use standard search for simple lookups.** Agentic search adds latency from multiple retrieval rounds. Only use it for complex, multi-hop questions.
 
 ### MEDIUM
