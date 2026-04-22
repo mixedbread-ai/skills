@@ -39,7 +39,13 @@ claude install-skill mixedbread-ai/skills mixedbread-parsing
 <details>
 <summary>Cursor</summary>
 
-Add this repository as a plugin in your Cursor settings, or clone and reference the `.cursor-plugin/` directory.
+This repo ships as a Cursor marketplace with three separately-installable plugins (`mxbai-cli`, `mixedbread-search`, `mixedbread-parsing`). Install from the [Cursor marketplace](https://cursor.com/marketplace), or test locally by cloning into `~/.cursor/plugins/local`:
+
+```bash
+git clone https://github.com/mixedbread-ai/skills ~/.cursor/plugins/local/mixedbread-skills
+```
+
+Cursor reads `.cursor-plugin/marketplace.json` at the repo root.
 </details>
 
 <details>

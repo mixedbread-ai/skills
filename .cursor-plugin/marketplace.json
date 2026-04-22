@@ -1,7 +1,8 @@
 {
   "name": "mixedbread-skills",
   "owner": {
-    "name": "Mixedbread"
+    "name": "Mixedbread",
+    "email": "support@mixedbread.com"
   },
   "metadata": {
     "version": "1.0.0",
@@ -12,19 +13,46 @@
       "name": "mxbai-cli",
       "description": "Manage stores, upload files, search, and sync documents using the mxbai CLI tool.",
       "source": "./skills/mxbai-cli",
-      "skills": ["./"]
+      "skills": ["./"],
+      "version": "1.0.0",
+      "author": {
+        "name": "Mixedbread"
+      },
+      "homepage": "https://www.mixedbread.com/cli",
+      "repository": "https://github.com/mixedbread-ai/skills",
+      "license": "Apache-2.0",
+      "logo": "public/logo_mb.svg",
+      "keywords": ["cli", "mxbai", "stores", "upload", "sync"]
     },
     {
       "name": "mixedbread-search",
       "description": "Build and query managed search indexes (Stores) using the Mixedbread Python and TypeScript SDKs.",
       "source": "./skills/mixedbread-search",
-      "skills": ["./"]
+      "skills": ["./"],
+      "version": "1.0.0",
+      "author": {
+        "name": "Mixedbread"
+      },
+      "homepage": "https://www.mixedbread.com/docs",
+      "repository": "https://github.com/mixedbread-ai/skills",
+      "license": "Apache-2.0",
+      "logo": "public/logo_mb.svg",
+      "keywords": ["search", "rag", "vector-search", "stores", "semantic-search"]
     },
     {
       "name": "mixedbread-parsing",
       "description": "Parse documents, extract structured content, and run OCR using the Mixedbread Parsing API.",
       "source": "./skills/mixedbread-parsing",
-      "skills": ["./"]
+      "skills": ["./"],
+      "version": "1.0.0",
+      "author": {
+        "name": "Mixedbread"
+      },
+      "homepage": "https://www.mixedbread.com/docs",
+      "repository": "https://github.com/mixedbread-ai/skills",
+      "license": "Apache-2.0",
+      "logo": "public/logo_mb.svg",
+      "keywords": ["parsing", "ocr", "pdf", "document-extraction"]
     }
   ]
 }
