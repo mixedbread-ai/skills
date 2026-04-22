@@ -21,7 +21,7 @@
       "homepage": "https://www.mixedbread.com/cli",
       "repository": "https://github.com/mixedbread-ai/skills",
       "license": "Apache-2.0",
-      "logo": "public/logo_mb.svg",
+      "logo": "public/logo_mb_square.svg",
       "keywords": ["cli", "mxbai", "stores", "upload", "sync"]
     },
     {
@@ -36,7 +36,7 @@
       "homepage": "https://www.mixedbread.com/docs",
       "repository": "https://github.com/mixedbread-ai/skills",
       "license": "Apache-2.0",
-      "logo": "public/logo_mb.svg",
+      "logo": "public/logo_mb_square.svg",
       "keywords": ["search", "rag", "vector-search", "stores", "semantic-search"]
     },
     {
@@ -51,7 +51,7 @@
       "homepage": "https://www.mixedbread.com/docs",
       "repository": "https://github.com/mixedbread-ai/skills",
       "license": "Apache-2.0",
-      "logo": "public/logo_mb.svg",
+      "logo": "public/logo_mb_square.svg",
       "keywords": ["parsing", "ocr", "pdf", "document-extraction"]
     }
   ]
