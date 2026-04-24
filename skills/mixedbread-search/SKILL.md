@@ -309,6 +309,10 @@ results = mxbai.stores.search(
         "agentic": {
             "max_rounds": 3,
             "queries_per_round": 2,
+            "instructions": (
+                "Prioritize official pricing pages over blog posts. "
+                "Surface tier names, monthly cost, and included feature lists."
+            ),
         }
     },
 )
@@ -323,12 +327,29 @@ const results = await mxbai.stores.search({
         agentic: {
             max_rounds: 3,
             queries_per_round: 2,
+            instructions:
+                'Prioritize official pricing pages over blog posts. ' +
+                'Surface tier names, monthly cost, and included feature lists.',
         },
     },
 });
 ```
 
-Set `agentic` to `true` for default settings, or pass an object to control `max_rounds` and `queries_per_round`.
+#### Agentic options
+
+- `agentic: true` — enable with defaults.
+- `agentic: { ... }` — override individual fields:
+  - `max_rounds` (default `3`, range `1–10`) — maximum retrieval rounds.
+  - `queries_per_round` (default `3`, range `1–5`) — sub-queries generated per round.
+  - `instructions` (string, up to 2000 chars) — the **agent prompt input**. Tells the agent how to plan and rank its searches: which entities, metrics, or source types to prioritize; what to treat as authoritative; what to ignore. The top-level `query` remains the user's question — use `instructions` for guidance that shouldn't appear in every sub-query.
+
+When `agentic` is enabled, `search_options.rewrite_query` and `search_options.rerank` are ignored — the agent handles query decomposition and ranking itself.
+
+#### Writing good agentic `instructions`
+
+- Prefer directive phrases ("prioritize X", "ignore Y", "treat Z as authoritative") over restating the question.
+- Name the concrete fields, metrics, or document types to surface so ranking is grounded in what you care about.
+- Keep the question itself in `query`; put ranking/planning guidance in `instructions`.
 
 ## Response Shapes
 
@@ -394,6 +415,7 @@ for file in files.data:
 - **One store per knowledge domain, not per query.** Stores are persistent indexes meant to be reused. Create once, search many times.
 - **Use chunk scores to filter low-relevance noise.** If you need a minimum relevance cutoff, post-filter on `chunk.score` (for example `>= 0.3`) after retrieval.
 - **Start with default `agentic` settings.** Only increase `max_rounds` if results are insufficient.
+- **Use `agentic.instructions` to steer retrieval, not `query`.** Keep `query` as the user's natural-language question. Put "prioritize X", "ignore Y", source-type preferences, and ranking hints in `search_options.agentic.instructions` (up to 2000 chars).
 
 ## Troubleshooting
 
