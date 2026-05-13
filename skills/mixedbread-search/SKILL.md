@@ -94,6 +94,12 @@ const results = await mxbai.stores.search({
 - **Do you need OCR, summaries, or transcriptions from files?**
   - Yes → Upload files with `config: {"parsing_strategy": "high_quality"}`. Stores auto-extract OCR text, summaries, and transcriptions — no separate parsing needed.
   - No / text-only documents → Default `parsing_strategy` (`"fast"`) is sufficient.
+- **Does the user's query language overlap with metadata fields (titles, categories, authors)?**
+  - Yes → Enable `contextualization` at store creation so embeddings carry that metadata. See [Contextualization](#contextualization).
+  - No → Leave it off (the default).
+- **Do you need the exact stored chunks for a known file (not a query)?**
+  - Yes → Call `stores.files.retrieve()` with `return_chunks=True` (or a list of indices). See [Retrieve Chunks by File](#retrieve-chunks-by-file).
+  - No, you want relevance ranking → Use `search()`.
 - **Is the store temporary (e.g., PR review)?**
   - Yes → Set `expires_after` with a day limit at creation
 
@@ -231,6 +237,14 @@ const results = await mxbai.stores.search({
     store_identifiers: ['my-docs', 'mixedbread/web'],
 });
 ```
+
+### Contextualization
+
+Appends selected file metadata to chunk text before embedding, so queries that overlap with fields like `title`, `category`, or `author` rank more accurately. Configured on the store's `config.contextualization` at creation time and only affects files uploaded afterward. Look up the modes (`false` / `true` / `{"with_metadata": [...]}`) in the Stores docs — fetch `llms.txt` (linked at the top of this skill) and follow the link to the Stores configuration page.
+
+### Retrieve Chunks by File
+
+When you already know the file (preview, export, ingestion debugging) and don't need ranking, call `stores.files.retrieve()` with `return_chunks=True` (all chunks) or `return_chunks=[indices]` (specific `chunk_index` positions). For the exact request/response shape, look up the "Get Store File" endpoint in the API reference — fetch `llms.txt` and follow the link, or search the docs.
 
 ### Question Answering
 
