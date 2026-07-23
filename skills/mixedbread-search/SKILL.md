@@ -83,16 +83,17 @@ const results = await mxbai.stores.search({
 
 - **What kind of retrieval do you need?**
   - Simple keyword/semantic lookup → Standard `search()` with `top_k`
-  - Natural-language answer with citations → `question_answering()` with `cite` enabled
+  - Natural-language answer with citations → `question_answering()` (citations are on by default)
   - Complex multi-hop question → `search()` with `agentic` enabled
+  - Exact token/regex match (error codes, identifiers, literal phrases) → `POST /v1/stores/grep`. See [Grep and Chunk Listing](#grep-and-chunk-listing-rest).
   - Combine internal docs with live web → Add `"mixedbread/web"` to `store_identifiers`
 - **Do you need metadata filtering?**
   - Don't know what metadata exists → Call `metadata_facets()` first
   - Know the fields → Build `filters` with `all`/`any`/`none` combinators
 - **Do you need higher relevance?**
-  - Yes → Set `"rerank": true` in `search_options`, or use `{"rerank": {"model": "mixedbread-ai/mxbai-rerank-large-v2"}}` to choose a model
+  - Yes → Set `"rerank": true` in `search_options` (uses the default model, `mixedbread-ai/mxbai-rerank-v3-listwise`), or pass a config object: `{"rerank": {"model": "...", "with_metadata": true, "top_k": 10}}` to choose a model, include metadata in reranking, or cap post-rerank results.
 - **Do you need OCR, summaries, or transcriptions from files?**
-  - Yes → Upload files with `config: {"parsing_strategy": "high_quality"}`. Stores auto-extract OCR text, summaries, and transcriptions — no separate parsing needed.
+  - Yes → Upload files with `config: {"parsing_strategy": "high_quality"}`. Stores auto-extract OCR text, summaries, and transcriptions — no separate parsing needed. For PDFs, slides, Word documents, and images, chunks additionally carry per-page layout in `generated_metadata.layout`: each detected element with its bounding box (`[x1, y1, x2, y2]` in page-image pixels), element type, and OCR text, in reading order.
   - No / text-only documents → Default `parsing_strategy` (`"fast"`) is sufficient.
 - **Does the user's query language overlap with metadata fields (titles, categories, authors)?**
   - Yes → Enable `contextualization` at store creation so embeddings carry that metadata. See [Contextualization](#contextualization).
@@ -132,7 +133,7 @@ results = mxbai.stores.search(
     query="How do I reset my password?",
     store_identifiers=["product-docs"],
     top_k=5,
-    search_options={"rerank": True, "return_metadata": True},
+    search_options={"rerank": True},  # file metadata is returned by default
 )
 for chunk in results.data:
     print(f"{chunk.score:.3f} | {chunk.filename}: {chunk.text[:100]}")
@@ -163,7 +164,7 @@ const results = await mxbai.stores.search({
     query: 'How do I reset my password?',
     store_identifiers: ['product-docs'],
     top_k: 5,
-    search_options: { rerank: true, return_metadata: true },
+    search_options: { rerank: true },  // file metadata is returned by default
 });
 
 // Optional: poll store.file_counts if you need deterministic full-batch coverage (benchmarks, migrations).
@@ -189,7 +190,7 @@ results = mxbai.stores.search(
             {"key": "status", "operator": "not_eq", "value": "archived"},
         ]
     },
-    search_options={"rerank": True, "return_metadata": True},
+    search_options={"rerank": True},
 )
 ```
 
@@ -212,11 +213,11 @@ const results = await mxbai.stores.search({
             { key: 'status', operator: 'not_eq', value: 'archived' },
         ],
     },
-    search_options: { rerank: true, return_metadata: true },
+    search_options: { rerank: true },
 });
 ```
 
-Filter operators: `eq`, `not_eq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `starts_with`, `not_like`, `regex`. Combine with `all` (AND), `any` (OR), `none` (NOT).
+Filter operators: `eq`, `not_eq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `contains`, `starts_with`, `regex`. Combine with `all` (AND), `any` (OR), `none` (NOT).
 
 ### Web-Augmented Search
 
@@ -246,9 +247,16 @@ Appends selected file metadata to chunk text before embedding, so queries that o
 
 When you already know the file (preview, export, ingestion debugging) and don't need ranking, call `stores.files.retrieve()` with `return_chunks=True` (all chunks) or `return_chunks=[indices]` (specific `chunk_index` positions). For the exact request/response shape, look up the "Get Store File" endpoint in the API reference — fetch `llms.txt` and follow the link, or search the docs.
 
+### Grep and Chunk Listing (REST)
+
+Two endpoints without dedicated SDK methods yet — call them over HTTP (or the SDK's generic `post`):
+
+- **`POST /v1/stores/grep`** — match chunks against an RE2 regular expression instead of semantic search. Finds chunks containing a literal token, identifier, error code, or phrase. Body: `pattern` (regex, up to 1024 chars), `store_identifiers` (exactly one store), `targets` (default `["text", "generated"]` — original chunk text vs. ingestion-derived OCR text, transcriptions, and summaries), `case_sensitive` (default `false`), `top_k`, `filters`. No pagination — raise `top_k` for more matches. Response chunks come back under `data`.
+- **`POST /v1/stores/list-chunks`** — list chunks by metadata `filters` without a search query, optionally ordered by a metadata field: `sort_by: "price"` or `["price", false]` for descending (unprefixed paths target file metadata, `generated_metadata.*` targets chunk metadata). Single store only.
+
 ### Question Answering
 
-Get a generated answer with cited sources. The answer may contain `<cite i="n"/>` tags referencing the sources list.
+Get a generated answer with cited sources. The answer may contain `<cite i="n"/>` tags referencing the sources list. Citations (`qa_options.cite`) and multimodal context (`qa_options.multimodal`) are both on by default. Optional top-level parameters: `instructions` (up to 8,000 chars) to steer answer style and focus, and `stream: true` to stream the answer.
 
 **Python:**
 ```python
@@ -256,7 +264,6 @@ result = mxbai.stores.question_answering(
     query="What are the rate limits?",
     store_identifiers=["my-docs"],
     top_k=10,
-    qa_options={"cite": True},
     search_options={"rerank": True},
 )
 print(result.answer)
@@ -270,7 +277,6 @@ const result = await mxbai.stores.questionAnswering({
     query: 'What are the rate limits?',
     store_identifiers: ['my-docs'],
     top_k: 10,
-    qa_options: { cite: true },
     search_options: { rerank: true },
 });
 console.log(result.answer);
@@ -289,7 +295,6 @@ result = mxbai.stores.question_answering(
     query="Compare the pricing tiers and their feature differences",
     store_identifiers=["my-docs"],
     top_k=10,
-    qa_options={"cite": True},
     search_options={"rerank": True},
 )
 
@@ -298,7 +303,6 @@ if not result.sources:
         query="Compare the pricing tiers and their feature differences",
         store_identifiers=["my-docs"],
         top_k=10,
-        qa_options={"cite": True},
         search_options={
             "rerank": True,
             "agentic": {"max_rounds": 3},
@@ -354,8 +358,10 @@ const results = await mxbai.stores.search({
 - `agentic: true` — enable with defaults.
 - `agentic: { ... }` — override individual fields:
   - `max_rounds` (default `3`, range `1–10`) — maximum retrieval rounds.
-  - `queries_per_round` (default `3`, range `1–5`) — sub-queries generated per round.
-  - `instructions` (string, up to 2000 chars) — the **agent prompt input**. Tells the agent how to plan and rank its searches: which entities, metrics, or source types to prioritize; what to treat as authoritative; what to ignore. The top-level `query` remains the user's question — use `instructions` for guidance that shouldn't appear in every sub-query.
+  - `queries_per_round` (default `4`, range `1–10`) — sub-queries generated per round.
+  - `instructions` (string, up to 5000 chars) — the **agent prompt input**. Tells the agent how to plan and rank its searches: which entities, metrics, or source types to prioritize; what to treat as authoritative; what to ignore. The top-level `query` remains the user's question — use `instructions` for guidance that shouldn't appear in every sub-query.
+  - `strict_top_k` (default `false`) — require the final chunk list to contain exactly `top_k` ranked chunks.
+  - `media_content` (default `"auto"`) — when retrieved image content is sent to the agent: `"auto"` only when no OCR text or summary is available, `"never"` disables it, `"always"` sends it whenever available.
 
 When `agentic` is enabled, `search_options.rewrite_query` and `search_options.rerank` are ignored — the agent handles query decomposition and ranking itself.
 
@@ -375,13 +381,16 @@ chunk.score      # float — relevance score (0–1)
 chunk.filename   # str — source file name
 chunk.file_id    # str — source file ID
 chunk.store_id   # str — store the chunk belongs to
-chunk.metadata   # dict — attached metadata (when return_metadata is enabled)
+chunk.metadata   # dict — attached file metadata (returned by default; disable with return_metadata=False)
 chunk.type       # str — chunk type (e.g. "text", "image_url")
 chunk.image_url  # dict | None — image payload for image chunks
 chunk.ocr_text   # str | None — OCR text for image-heavy chunks
 chunk.summary    # str | None — auto-generated summary for image chunks (high_quality mode)
 chunk.transcription # str | None — transcription for audio/video chunks (high_quality mode)
+chunk.generated_metadata # dict | None — ingestion-derived metadata (page counts, dimensions, headings, ...)
 ```
+
+In `high_quality` mode, PDF, slides, Word, and image chunks also expose the OCR layout in `generated_metadata.layout`: the page-image `width`/`height` plus `elements` in reading order, each with `bbox` (`[x1, y1, x2, y2]` in page-image pixel coordinates), `type` (e.g. `table`, `figure`, `text`), and the element's OCR `text`. Use it to highlight evidence regions or map answers back to a location on the page.
 
 **QA results** (`question_answering()` returns):
 ```python
@@ -421,22 +430,23 @@ for file in files.data:
 - **Do not block on full ingestion unless completeness matters.** Stores process files asynchronously, and completed files become searchable as they finish. Most of the time, especially for interactive flows, upload and search immediately without polling. Poll file status or `file_counts` only when the workflow depends on complete batch coverage, such as benchmarks, migrations, or sync verification.
 - **Use `metadata_facets()` before building filters.** Don't guess metadata keys — discover them. Typos in filter keys silently return no results.
 - **Enable `rerank` for production search.** Reranking significantly improves relevance. Only skip it for latency-sensitive prototyping.
-- **Use `parsing_strategy: "high_quality"` to enable automatic content extraction.** When set in per-file config at upload time, high quality mode extracts OCR text and summaries for images, and transcriptions for audio and video. These fields are directly usable as LLM context. The default `"fast"` strategy indexes content without these additional extractions.
+- **Use `parsing_strategy: "high_quality"` to enable automatic content extraction.** When set in per-file config at upload time, high quality mode extracts OCR text and summaries for images, and transcriptions for audio and video. These fields are directly usable as LLM context. It also populates `generated_metadata.layout` on PDF, slides, Word, and image chunks — per-element bounding boxes alongside the OCR text. The default `"fast"` strategy indexes content without these additional extractions.
 - **Use standard search for simple lookups.** Agentic search adds latency from multiple retrieval rounds. Only use it for complex, multi-hop questions.
 
 ### MEDIUM
 - **Set `expires_after` for temporary stores.** PR review stores, demo stores, and test stores should auto-expire to avoid accumulating unused indexes.
 - **One store per knowledge domain, not per query.** Stores are persistent indexes meant to be reused. Create once, search many times.
-- **Use chunk scores to filter low-relevance noise.** If you need a minimum relevance cutoff, post-filter on `chunk.score` (for example `>= 0.3`) after retrieval.
+- **Use `score_threshold` to filter low-relevance noise.** Set `search_options: {"score_threshold": 0.3}` to drop chunks below a minimum relevance server-side — no need to post-filter on `chunk.score` client-side.
 - **Start with default `agentic` settings.** Only increase `max_rounds` if results are insufficient.
-- **Use `agentic.instructions` to steer retrieval, not `query`.** Keep `query` as the user's natural-language question. Put "prioritize X", "ignore Y", source-type preferences, and ranking hints in `search_options.agentic.instructions` (up to 2000 chars).
+- **Use `agentic.instructions` to steer retrieval, not `query`.** Keep `query` as the user's natural-language question. Put "prioritize X", "ignore Y", source-type preferences, and ranking hints in `search_options.agentic.instructions` (up to 5000 chars).
+- **Image queries only support plain semantic search.** Combining an image query with `rerank`, `rewrite_query`, or `agentic` raises a validation error.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No results returned | Newly uploaded files are still processing, or the store name/query is wrong | Retry after processing completes for at least one file. For completeness-sensitive runs, verify the expected files are `completed` before evaluating results. |
-| No results returned | Score cutoff too high | Lower or remove your post-filter threshold. |
+| No results returned | Score cutoff too high | Lower or remove `search_options.score_threshold` (or any client-side cutoff). |
 | No results returned | Wrong `store_identifiers` | Verify the store name or ID matches exactly. |
 | Metadata filters return nothing | Wrong key name or value | Use `metadata_facets()` to discover actual keys and values. |
 | Slow agentic search | Too many rounds or queries | Reduce `max_rounds` or `queries_per_round`. Use standard search if the query is simple. |

@@ -67,16 +67,21 @@ for (const chunk of job.result.chunks) {
   - File on disk → `upload_and_poll()` (uploads + creates job + polls)
   - File already uploaded via Files API → `create_and_poll()` (creates job + polls)
   - Need async control → `upload()` or `create()` then `poll()` separately
-- **Which parsing mode?**
-  - Born-digital PDF (selectable text) → `fast` mode. Fastest, lowest cost. Extracts text, structure, and layout.
-  - Scanned document, image, or complex layout → `high_quality` mode. Uses OCR. Extracts text with confidence scores, handles rotated/skewed pages, multi-column layouts.
+- **Which parsing mode?** (default is `high_quality`)
+  - Born-digital PDF (selectable text) → pass `mode="fast"` explicitly. Fastest, lowest cost. Extracts text, structure, and layout.
+  - Scanned document, image, or complex layout → `high_quality` mode (the default). Uses OCR. Extracts text with confidence scores and per-element bounding boxes, handles rotated/skewed pages, multi-column layouts.
+- **Which return format?** → `return_format`: `markdown` (default), `html`, or `plain`
 - **Need specific elements only?** → Set `element_types` to reduce processing time
 
 ## Supported File Types
 
-PDF (`.pdf`), Word (`.doc`, `.docx`, `.dotx`, `.docm`, `.dotm`, `.odt`, `.rtf`), Slides (`.ppt`, `.pptx`, `.ppsx`, `.pptm`, `.potm`, `.ppsm`, `.odp`), Images (`.jpeg`, `.png`, `.webp`, `.avif`).
+PDF (`.pdf`), Word (`.doc`, `.docx`, `.dotx`, `.docm`, `.dotm`, `.odt`, `.rtf`), Slides (`.ppt`, `.pptx`, `.ppsx`, `.ppam`, `.pptm`, `.potm`, `.ppsm`, `.odp`), Images (`.jpeg`, `.png`, `.webp`, `.avif`).
 
-Element types: `text`, `title`, `section-header`, `header`, `footer`, `page-number`, `list-item`, `figure`, `picture`, `table`, `form`, `footnote`, `caption`, `formula`.
+Element types: `text`, `title`, `section-header`, `header`, `footer`, `page-number`, `list-item`, `figure`, `table`, `form`, `footnote`. (Legacy values `picture`, `caption`, `formula`, `page-header`, and `page-footer` are accepted but normalized to `figure`/`text`/`header`/`footer`.)
+
+Each extracted element carries `type`, `content`, `page`, `confidence` (0–1), and `bbox` — the bounding box `[x1, y1, x2, y2]` in page pixel coordinates. Use bboxes to map OCR output back to its location on the page (e.g. evidence highlighting).
+
+Chunking: `chunking_strategy` defaults to `page` (currently the only strategy) — one chunk per page.
 
 ## Workflows
 
@@ -95,7 +100,7 @@ job = mxbai.parsing.jobs.upload_and_poll(
 for chunk in job.result.chunks:
     for element in chunk.elements:
         if element.type == "table":
-            print(f"Page {element.page}, confidence {element.confidence:.2f}")
+            print(f"Page {element.page}, confidence {element.confidence:.2f}, bbox {element.bbox}")
             print(element.content)
 ```
 
@@ -108,7 +113,7 @@ const job = await mxbai.parsing.jobs.uploadAndPoll(
 for (const chunk of job.result.chunks) {
     for (const element of chunk.elements) {
         if (element.type === 'table') {
-            console.log(`Page ${element.page}, confidence ${element.confidence.toFixed(2)}`);
+            console.log(`Page ${element.page}, confidence ${element.confidence.toFixed(2)}, bbox ${element.bbox}`);
             console.log(element.content);
         }
     }
