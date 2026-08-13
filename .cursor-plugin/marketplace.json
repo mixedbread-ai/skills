@@ -5,8 +5,8 @@
     "email": "support@mixedbread.com"
   },
   "metadata": {
-    "version": "1.0.0",
-    "description": "Agent skills for search, RAG, and document parsing with Mixedbread."
+    "version": "1.1.0",
+    "description": "Agent skills for search, RAG, parsing, completions, and model harnesses with Mixedbread."
   },
   "plugins": [
     {
@@ -29,7 +29,7 @@
       "description": "Build and query managed search indexes (Stores) using the Mixedbread Python and TypeScript SDKs.",
       "source": "./skills/mixedbread-search",
       "skills": ["./"],
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Mixedbread"
       },
@@ -53,6 +53,36 @@
       "license": "Apache-2.0",
       "logo": "public/logo_mb_square.svg",
       "keywords": ["parsing", "ocr", "pdf", "document-extraction"]
+    },
+    {
+      "name": "mixedbread-search-agent",
+      "description": "Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions API: auth, parameters, tool calls, streaming, stored conversations.",
+      "source": "./skills/mixedbread-search-agent",
+      "skills": ["./"],
+      "version": "1.0.0",
+      "author": {
+        "name": "Mixedbread"
+      },
+      "homepage": "https://www.mixedbread.com/api-reference",
+      "repository": "https://github.com/mixedbread-ai/skills",
+      "license": "Apache-2.0",
+      "logo": "public/logo_mb_square.svg",
+      "keywords": ["search-agent", "model-api", "tool-calling", "retrieval-tools"]
+    },
+    {
+      "name": "mixedbread-search-agent-harness",
+      "description": "Build the loop around Mixedbread's Toast-1 search model: round budgets, parallel execution, evidence handles, pruning, terminals.",
+      "source": "./skills/mixedbread-search-agent-harness",
+      "skills": ["./"],
+      "version": "1.0.0",
+      "author": {
+        "name": "Mixedbread"
+      },
+      "homepage": "https://www.mixedbread.com/docs",
+      "repository": "https://github.com/mixedbread-ai/skills",
+      "license": "Apache-2.0",
+      "logo": "public/logo_mb_square.svg",
+      "keywords": ["search-model", "agent-harness", "tool-calling", "search-agent"]
     }
   ]
 }

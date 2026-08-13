@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mixedbread Search Agent Harness"
+  short_description: "Build the loop around Toast-1"
+  default_prompt: "Use $mixedbread-search-agent-harness to design a bounded, parallel harness for Mixedbread's Toast-1 search model."

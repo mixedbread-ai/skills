@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mixedbread Search Agent"
+  short_description: "Call Toast-1 over the Completions API"
+  default_prompt: "Use $mixedbread-search-agent to call Mixedbread's Toast-1 search model through the Chat Completions API with your own function tools."

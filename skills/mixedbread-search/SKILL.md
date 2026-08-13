@@ -84,7 +84,7 @@ const results = await mxbai.stores.search({
 - **What kind of retrieval do you need?**
   - Simple keyword/semantic lookup → Standard `search()` with `top_k`
   - Natural-language answer with citations → `question_answering()` (citations are on by default)
-  - Complex multi-hop question → `search()` with `agentic` enabled
+  - Complex multi-hop question or retrieval that benefits from adaptive semantic, exact, metadata, and document-level exploration → `search()` with `agentic` enabled
   - Exact token/regex match (error codes, identifiers, literal phrases) → `POST /v1/stores/grep`. See [Grep and Chunk Listing](#grep-and-chunk-listing-rest).
   - Combine internal docs with live web → Add `"mixedbread/web"` to `store_identifiers`
 - **Do you need metadata filtering?**
@@ -303,10 +303,7 @@ if not result.sources:
         query="Compare the pricing tiers and their feature differences",
         store_identifiers=["my-docs"],
         top_k=10,
-        search_options={
-            "rerank": True,
-            "agentic": {"max_rounds": 3},
-        },
+        search_options={"agentic": True},
     )
 
 print(result.answer)
@@ -316,17 +313,19 @@ for source in result.sources:
 
 ### Agentic Search
 
-For complex questions requiring multi-step retrieval. The system decomposes your query into sub-queries and runs multiple rounds. Works in both `search()` and `question_answering()`.
+For complex questions requiring multi-step retrieval. Enabling `agentic` delegates retrieval and ranking to Mixedbread's managed search-agent harness. It begins with the original query and metadata inspection, then adaptively chooses among semantic search, exact/regex matching, metadata filtering, corpus overview, and chunk or document expansion before submitting a final evidence ranking. It can fan searches out in parallel and deduplicates evidence across calls. Works in both `search()` and `question_answering()`.
+
+The exact internal tool sequence is implementation detail: do not assume a fixed number of generated sub-queries or build client logic around trace tool names. The public response remains the usual ranked chunk list; `question_answering()` uses that list to generate its cited answer.
 
 **Python:**
 ```python
 results = mxbai.stores.search(
     query="Compare the pricing tiers and their feature differences",
     store_identifiers=["product-docs"],
+    top_k=10,
     search_options={
+        "rerank": True,
         "agentic": {
-            "max_rounds": 3,
-            "queries_per_round": 2,
             "instructions": (
                 "Prioritize official pricing pages over blog posts. "
                 "Surface tier names, monthly cost, and included feature lists."
@@ -341,10 +340,10 @@ results = mxbai.stores.search(
 const results = await mxbai.stores.search({
     query: 'Compare the pricing tiers and their feature differences',
     store_identifiers: ['product-docs'],
+    top_k: 10,
     search_options: {
+        rerank: true,
         agentic: {
-            max_rounds: 3,
-            queries_per_round: 2,
             instructions:
                 'Prioritize official pricing pages over blog posts. ' +
                 'Surface tier names, monthly cost, and included feature lists.',
@@ -356,19 +355,21 @@ const results = await mxbai.stores.search({
 #### Agentic options
 
 - `agentic: true` — enable with defaults.
-- `agentic: { ... }` — override individual fields:
-  - `max_rounds` (default `3`, range `1–10`) — maximum retrieval rounds.
-  - `queries_per_round` (default `4`, range `1–10`) — sub-queries generated per round.
-  - `instructions` (string, up to 5000 chars) — the **agent prompt input**. Tells the agent how to plan and rank its searches: which entities, metrics, or source types to prioritize; what to treat as authoritative; what to ignore. The top-level `query` remains the user's question — use `instructions` for guidance that shouldn't appear in every sub-query.
-  - `strict_top_k` (default `false`) — require the final chunk list to contain exactly `top_k` ranked chunks.
-  - `media_content` (default `"auto"`) — when retrieved image content is sent to the agent: `"auto"` only when no OCR text or summary is available, `"never"` disables it, `"always"` sends it whenever available.
+- `agentic: { ... }` — use the currently active request controls:
+  - `instructions` (string, up to 5000 chars) — additional retrieval and ranking guidance. Tell the agent which entities, metrics, time ranges, source types, or authority rules matter and what to ignore. The top-level `query` remains the user's question.
+  - `strict_top_k` (default `false`) — require the final evidence submission to contain exactly `top_k` chunks. Leave this off for small or sparse stores that may not contain enough relevant chunks.
 
-When `agentic` is enabled, `search_options.rewrite_query` and `search_options.rerank` are ignored — the agent handles query decomposition and ranking itself.
+The managed harness honors the top-level `query`, `store_identifiers`, `top_k`, `filters`, and `file_ids`. `filters` and `file_ids` are hard scope constraints ANDed into every retrieval the agent makes, while `instructions` are soft planning and ranking guidance.
+
+The request schema still accepts `max_rounds`, `queries_per_round`, and `media_content` for compatibility with the previous agentic implementation, but the managed harness does not currently forward these request-level values. Do not use them for tuning. Retrieved image content is currently disabled for the managed agent, and request-level `score_threshold` is not forwarded either.
+
+When `agentic` is enabled, `search_options.rewrite_query` is unnecessary because the managed agent plans its own queries. `rerank` may be enabled alongside agentic search; it reranks results returned by the agent's semantic-search tool before the agent performs its final evidence ranking.
 
 #### Writing good agentic `instructions`
 
 - Prefer directive phrases ("prioritize X", "ignore Y", "treat Z as authoritative") over restating the question.
-- Name the concrete fields, metrics, or document types to surface so ranking is grounded in what you care about.
+- Name concrete entities, fields, metrics, time ranges, or document types so exploration and ranking are grounded in what you care about.
+- Use top-level `filters` or `file_ids` for enforceable scope. Do not rely on instructions such as "only search team=growth" when a metadata filter can express the constraint.
 - Keep the question itself in `query`; put ranking/planning guidance in `instructions`.
 
 ## Response Shapes
@@ -436,8 +437,8 @@ for file in files.data:
 ### MEDIUM
 - **Set `expires_after` for temporary stores.** PR review stores, demo stores, and test stores should auto-expire to avoid accumulating unused indexes.
 - **One store per knowledge domain, not per query.** Stores are persistent indexes meant to be reused. Create once, search many times.
-- **Use `score_threshold` to filter low-relevance noise.** Set `search_options: {"score_threshold": 0.3}` to drop chunks below a minimum relevance server-side — no need to post-filter on `chunk.score` client-side.
-- **Start with default `agentic` settings.** Only increase `max_rounds` if results are insufficient.
+- **Use `score_threshold` to filter low-relevance noise in standard search.** Set `search_options: {"score_threshold": 0.3}` to drop chunks below a minimum relevance server-side — no need to post-filter on `chunk.score` client-side. It is not currently forwarded in agentic search.
+- **Use only active agentic controls.** Tune `top_k`, hard-scope with `filters`/`file_ids`, and steer with `agentic.instructions`. Request-level `max_rounds`, `queries_per_round`, and `media_content` are compatibility fields and are not currently forwarded to the managed harness.
 - **Use `agentic.instructions` to steer retrieval, not `query`.** Keep `query` as the user's natural-language question. Put "prioritize X", "ignore Y", source-type preferences, and ranking hints in `search_options.agentic.instructions` (up to 5000 chars).
 - **Image queries only support plain semantic search.** Combining an image query with `rerank`, `rewrite_query`, or `agentic` raises a validation error.
 
@@ -449,5 +450,5 @@ for file in files.data:
 | No results returned | Score cutoff too high | Lower or remove `search_options.score_threshold` (or any client-side cutoff). |
 | No results returned | Wrong `store_identifiers` | Verify the store name or ID matches exactly. |
 | Metadata filters return nothing | Wrong key name or value | Use `metadata_facets()` to discover actual keys and values. |
-| Slow agentic search | Too many rounds or queries | Reduce `max_rounds` or `queries_per_round`. Use standard search if the query is simple. |
+| Slow agentic search | Managed multi-step exploration adds model and retrieval calls | Use standard search if the query is simple, reduce `top_k` when fewer final chunks are sufficient, and make `agentic.instructions` more focused. Do not try to tune compatibility-only `max_rounds` or `queries_per_round`. |
 | API key error | Invalid or missing key | Verify `MXBAI_API_KEY` is set. Get a key at https://platform.mixedbread.com/platform?next=api-keys |

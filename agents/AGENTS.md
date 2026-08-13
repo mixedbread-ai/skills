@@ -16,6 +16,14 @@ Build and query managed search indexes (Stores) using the Mixedbread Python and 
 Parse documents, extract structured content, and run OCR using the Mixedbread Parsing API. Supports PDFs, Word documents, PowerPoint presentations, and images. Extract tables, forms, figures, and other elements with bounding boxes and confidence scores.
 - Skill file: [skills/mixedbread-parsing/SKILL.md](../skills/mixedbread-parsing/SKILL.md)
 
+### mixedbread-search-agent
+Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions API: authentication, request parameters, response shape, declaring function tools and answering tool calls, structured terminals, streaming, and stored conversations. Includes backend-agnostic tool contracts and the Mixedbread Stores wiring.
+- Skill file: [skills/mixedbread-search-agent/SKILL.md](../skills/mixedbread-search-agent/SKILL.md)
+
+### mixedbread-search-agent-harness
+Build the loop around Mixedbread's Toast-1 search model: bounded round budgets, parallel tool execution, stable evidence handles, context pruning, terminal tools, orchestration, and evaluation.
+- Skill file: [skills/mixedbread-search-agent-harness/SKILL.md](../skills/mixedbread-search-agent-harness/SKILL.md)
+
 
 ## Setup
 
