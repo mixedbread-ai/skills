@@ -8,6 +8,13 @@ Build and query managed search indexes.
 
 - **[mixedbread-search](skills/mixedbread-search/SKILL.md)** — Create stores, upload documents, search, and ask questions using the Python and TypeScript SDKs.
 
+## Completions & Agents
+
+Build search-grounded chat and custom search-agent runtimes.
+
+- **[mixedbread-search-agent](skills/mixedbread-search-agent/SKILL.md)** — Call Mixedbread's Toast-1 search model through the Chat Completions API: auth, parameters, tool calls, structured terminals, streaming, and stored conversations.
+- **[mixedbread-search-agent-harness](skills/mixedbread-search-agent-harness/SKILL.md)** — Build the loop: round budgets, parallel execution, stable evidence handles, pruning, terminal tools, and evaluation.
+
 ## Parsing
 
 Parse documents, extract structured content, and run OCR.

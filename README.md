@@ -6,7 +6,7 @@
   <p><em>All Mixedbread Skills you ever need.</em></p>
 </div>
 
-Agent skills for building search, RAG, and document parsing with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, Gemini CLI, and [20+ other agents](https://skills.sh/).
+Agent skills for building search, RAG, document parsing, search-grounded completions, and agent harnesses with [Mixedbread](https://www.mixedbread.com). Compatible with Claude Code, Cursor, Codex, Gemini CLI, and [20+ other agents](https://skills.sh/).
 
 ## Installation
 
@@ -24,6 +24,15 @@ npx skills add mixedbread-ai/skills -g
 
 Browse on the registry: [skills.sh/mixedbread-ai/skills](https://skills.sh/mixedbread-ai/skills)
 
+### Updating
+
+Installations are snapshots of the skill source at installation time. To check for and install updates from the repository:
+
+```bash
+npx skills check
+npx skills update
+```
+
 ### Platform-Specific Alternatives
 
 <details>
@@ -33,13 +42,15 @@ Browse on the registry: [skills.sh/mixedbread-ai/skills](https://skills.sh/mixed
 claude install-skill mixedbread-ai/skills mxbai-cli
 claude install-skill mixedbread-ai/skills mixedbread-search
 claude install-skill mixedbread-ai/skills mixedbread-parsing
+claude install-skill mixedbread-ai/skills mixedbread-search-agent
+claude install-skill mixedbread-ai/skills mixedbread-search-agent-harness
 ```
 </details>
 
 <details>
 <summary>Cursor</summary>
 
-This repo ships as a Cursor marketplace with three separately-installable plugins (`mxbai-cli`, `mixedbread-search`, `mixedbread-parsing`). Install from the [Cursor marketplace](https://cursor.com/marketplace), or test locally by cloning into `~/.cursor/plugins/local`:
+This repo ships as a Cursor marketplace with five separately-installable plugins (`mxbai-cli`, `mixedbread-search`, `mixedbread-parsing`, `mixedbread-search-agent`, `mixedbread-search-agent-harness`). Install from the [Cursor marketplace](https://cursor.com/marketplace), or test locally by cloning into `~/.cursor/plugins/local`:
 
 ```bash
 git clone https://github.com/mixedbread-ai/skills ~/.cursor/plugins/local/mixedbread-skills
@@ -69,6 +80,8 @@ Reference the `gemini-extension.json` for extension configuration, or use the `.
 | [`mxbai-cli`](skills/mxbai-cli/SKILL.md) | Manage stores, upload files, search, and sync using the `mxbai` CLI |
 | [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
 | [`mixedbread-parsing`](skills/mixedbread-parsing/SKILL.md) | Parse documents, extract structured content, and run OCR using the Parsing API |
+| [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions API |
+| [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Build the loop around Toast-1: rounds, parallelism, evidence handles, pruning |
 
 See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills.
 
@@ -88,7 +101,9 @@ mixedbread-skills/
 └── skills/
     ├── mxbai-cli/           # CLI tool usage
     ├── mixedbread-search/   # Stores API & SDKs
-    └── mixedbread-parsing/  # Parsing API & OCR
+    ├── mixedbread-parsing/  # Parsing API & OCR
+    ├── mixedbread-search-agent/ # Chat Completions API, tool contracts & Stores wiring
+    └── mixedbread-search-agent-harness/ # Custom search-model harness design
 ```
 
 ## Links
