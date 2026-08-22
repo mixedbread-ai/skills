@@ -74,7 +74,7 @@
       "description": "Build the loop around Mixedbread's Toast-1 search model: round budgets, parallel execution, evidence handles, pruning, terminals.",
       "source": "./skills/mixedbread-search-agent-harness",
       "skills": ["./"],
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "Mixedbread"
       },

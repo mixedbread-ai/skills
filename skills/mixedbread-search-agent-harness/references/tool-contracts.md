@@ -139,7 +139,7 @@ Require at least one emitted ID. Return what was pruned and which IDs were inval
 
 By default the model ends by answering: `finish_reason="stop"` with assistant content and no tool call. When prose is the deliverable, that is the whole terminal contract.
 
-For structured output, define your own terminal under any name except `submit_answer` and force it by name on the final round. The trained shape is chunk IDs your tools emitted, a relevance score each, and short reasoning:
+For structured output, define your own terminal under any name except `submit_answer`. Offer it alongside retrieval tools on non-final rounds and accept it early when it is the only call; on the final fallback, offer only the terminal and force it by name. The trained shape is chunk IDs your tools emitted, a relevance score each, and short reasoning:
 
 ```json
 {
