@@ -22,7 +22,7 @@ Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
 
 The API is stateless. Send a messages list plus tool schemas; the model returns text or tool calls. On `finish_reason="tool_calls"`, execute the calls, append **one tool message per call**, and resend the whole history. Build that exchange to these rules:
 
-- **Budget rounds, terminal included.** The model is trained to work within a bounded number of turns, so state the boundary in the prompt instead of only enforcing it in code. On the final round, narrow the tool list to the terminal and force it by name; otherwise the model ends in prose and returns no structured payload. Count the terminal round: 4 rounds gives the model three searches.
+- **Budget rounds, terminal included.** The model is trained to work within a bounded number of turns, so state the boundary in the prompt instead of only enforcing it in code. Offer a structured terminal alongside retrieval tools so the model can submit early. On the final fallback, narrow the tool list to the terminal and force it by name; otherwise the model may end in prose without the structured payload. Count the terminal round: a 4-round ceiling permits at most three search rounds before the forced fallback.
 - **Cap parallel calls, answer all of them.** The model fans out by design, and a round costs only the latency of its slowest call. Execute accepted calls concurrently, and emit a tool message for *rejected* calls too — an unanswered `tool_call_id` makes the next request invalid.
 - **Budget payloads.** Clip result text as it enters the history, and bound the round as a whole. Eight uncapped returns in one round cross the input limit on their own.
 - **Manage context in the harness.** Nothing prunes for you. Prune the message list you resend rather than summarizing it, and tell the model when it is over budget — see [Context management](#context-management).
@@ -34,14 +34,34 @@ import json
 
 
 async def run_episode(client, query: str) -> dict | str | None:
-    messages = [{"role": "user", "content": query}]
+    metadata_facets, seed_results = await asyncio.gather(
+        fetch_metadata_facets(query),
+        seed_search(query),
+    )
+    bootstrap = {
+        "metadata_facets": metadata_facets,
+        "seed_search_results": seed_results,
+    }
+    messages = [
+        {
+            "role": "user",
+            "content": (
+                f"User query:\n{query}\n\n"
+                "Pre-round bootstrap context follows. It was fetched before search "
+                "round 1, is not a tool result, and consumes no search round.\n"
+                f"{json.dumps(bootstrap, ensure_ascii=False)}"
+            ),
+        }
+    ]
 
     for round_index in range(MAX_ROUNDS):           # the terminal round is one of these
         final_round = round_index == MAX_ROUNDS - 1
         completion = await client.chat.completions.create(
             model="toast-1",
             messages=messages,
-            tools=[TERMINAL] if final_round else TOOLS,
+            # TOOLS contains only non-terminal schemas. Offer the terminal early;
+            # forcing it on the last round is the fallback, not the first chance.
+            tools=[TERMINAL] if final_round else [*TOOLS, TERMINAL],
             tool_choice=(
                 {"type": "function", "function": {"name": TERMINAL_NAME}}
                 if final_round
@@ -54,24 +74,25 @@ async def run_episode(client, query: str) -> dict | str | None:
             store=False,
         )
         message = completion.choices[0].message
-        if not message.tool_calls:
-            return message.content                  # finish_reason="stop": the run is done
+        calls = list(message.tool_calls or [])
+        terminal_calls = [call for call in calls if call.function.name == TERMINAL_NAME]
+        if terminal_calls:
+            if len(calls) != 1:
+                raise RuntimeError("terminal must be the only call in its turn")
+            return validate_terminal(terminal_calls[0])
         if final_round:
-            if (
-                len(message.tool_calls) != 1
-                or message.tool_calls[0].function.name != TERMINAL_NAME
-            ):
-                raise RuntimeError("final round did not return exactly one terminal call")
-            return validate_terminal(message.tool_calls[0])
+            raise RuntimeError("final round did not return exactly one terminal call")
+        if not calls:
+            return message.content                  # finish_reason="stop": the run is done
 
         messages.append(message.model_dump(exclude_none=True))
 
-        accepted = message.tool_calls[:MAX_PARALLEL_CALLS]
+        accepted = calls[:MAX_PARALLEL_CALLS]
         results = await asyncio.gather(*(execute(call) for call in accepted))
-        rejected = [over_cap_error(call) for call in message.tool_calls[MAX_PARALLEL_CALLS:]]
+        rejected = [over_cap_error(call) for call in calls[MAX_PARALLEL_CALLS:]]
 
         # One tool message per emitted call, in the model's original call order.
-        for call, result in zip(message.tool_calls, [*results, *rejected]):
+        for call, result in zip(calls, [*results, *rejected]):
             messages.append(
                 {"role": "tool", "tool_call_id": call.id, "content": json.dumps(clip(result))}
             )
@@ -81,7 +102,7 @@ async def run_episode(client, query: str) -> dict | str | None:
     raise RuntimeError("round budget exhausted without a terminal")
 ```
 
-Bootstrap the episode: fetch metadata facets and one seed search concurrently before round 1 and inject both as tool results, so the model starts oriented without spending a round on it. Read [architecture.md](references/architecture.md) for round-by-round mechanics and [python-loop.md](references/python-loop.md) for the full implementation.
+Bootstrap the episode: fetch metadata facets and one seed search concurrently before round 1, then include both in explicitly labeled ordinary context. Never encode bootstrap evidence as `role="tool"` messages or manufacture an assistant tool-call turn for it: the first model generation is round 1, and bootstrap consumes no round. Read [architecture.md](references/architecture.md) for round-by-round mechanics and [python-loop.md](references/python-loop.md) for the full implementation.
 
 ## Operating envelope
 
@@ -141,7 +162,7 @@ Compare on fixed queries and fixed corpus snapshots. Raise depth, width, or payl
 ## Don't
 
 - Don't name a harness tool `submit_answer`. Reserved — HTTP 422.
-- Don't detect termination by tool name. A finished run is `finish_reason="stop"` with content; a harness terminal only appears when forced by name.
+- Don't detect prose termination by tool name. A prose run finishes with `finish_reason="stop"` and content; a structured terminal may be selected early when offered and must be accepted when it is the only call.
 - Don't let a tool exception escape the executor, or leave an assistant tool call without a matching tool message.
 - Don't substitute a harness ranking for the model's submission. Validate against the registry, retry bounded, then fail.
 - Don't enable thinking, or build logic on `reasoning_content`.
@@ -149,8 +170,9 @@ Compare on fixed queries and fixed corpus snapshots. Raise depth, width, or payl
 - Don't prune silently, and don't wait for the ceiling. A budget notice missing "this may run in parallel" costs a whole search round.
 - Don't execute independent calls serially.
 - Don't leave payloads uncapped. Eight uncapped returns in one round fill the context before the third.
-- Don't count the terminal turn outside the round budget. At 3 rounds a searcher gets two searches.
+- Don't count the terminal turn outside the round budget. A 3-round ceiling permits at most two searches before the forced fallback.
 - Don't attach an instruction to the round label. "Search round 2 of max 4" as bare state; a nudge to submit teaches the model to wait for the countdown.
+- Don't encode pre-round bootstrap evidence as tool messages or synthetic assistant tool calls. Label it as bootstrap context and start the round counter with the first model generation.
 - Don't let expansion tools return as little text as search. At ~4× the clip they are worth calling; below that they are not.
 - Don't let the model filter on unconfirmed metadata, or rank on fields not confirmed numeric.
 - Don't reorder tool messages relative to the model's call order, even when execution finishes out of order.
@@ -161,6 +183,8 @@ Compare on fixed queries and fixed corpus snapshots. Raise depth, width, or payl
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | Loop exhausts its round budget every episode | Termination detected by tool name | Treat `finish_reason="stop"` with content as the ending |
+| Structured runs always consume every round | Terminal offered or handled only on the final round | Offer it alongside retrieval tools, accept it early as the sole call, and force it only on the final fallback |
+| Model treats bootstrap as a completed search round | Bootstrap encoded as tool protocol messages | Send labeled ordinary pre-round context; do not synthesize assistant calls or `role="tool"` results |
 | Opaque HTTP 500 mid-episode | Input over the sequence length | Hold a hard ceiling near 100,000 and clip round payloads into it |
 | Terminal returns prose | Not forced by name | `tool_choice={"type": "function", "function": {"name": ...}}` |
 | Model ignores the context limit | No budget signal reaches it | Contract in the system prompt + a per-round notice naming the token count |

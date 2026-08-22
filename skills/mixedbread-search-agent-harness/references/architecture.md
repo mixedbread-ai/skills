@@ -2,6 +2,12 @@
 
 Round-by-round mechanics for a search-model harness. Components, budgets, and rules live in SKILL.md; this is how a round actually runs. The loop can serve as a fast search sub-agent doing knowledge work for any orchestrator; orchestration itself stays outside the harness.
 
+## Bootstrap before round 1
+
+Fetch metadata facets and one seed search concurrently before entering the round loop. Register any evidence IDs, then serialize the payloads in stable facets-then-search order as explicitly labeled ordinary context. State that this context was prefetched, is not the output of a model tool call, and consumes no search round.
+
+Do not create a synthetic assistant tool-call message or `role="tool"` results for bootstrap data. Those protocol roles mean the model requested and spent a turn on the calls. The round counter remains at zero during bootstrap; the first model generation is round 1.
+
 ## Round choreography
 
 Before the final round:

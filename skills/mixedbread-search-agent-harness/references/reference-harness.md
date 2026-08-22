@@ -43,7 +43,7 @@ Search round 2 of max 4.
 
 | Behavior | Detail |
 |----------|--------|
-| Bootstrap | Metadata facets + one seed search on the original query, fetched concurrently before round 1 and injected as tool results in stable facets-then-search order |
+| Bootstrap | Metadata facets + one seed search on the original query, fetched concurrently before round 1 and inserted as labeled ordinary context in stable facets-then-search order; never as a synthetic assistant/tool exchange, and the round counter stays at zero |
 | Spread truncation | Oversized calls truncate in presentation order, earlier results keep more, every item keeps a 512-token floor, nothing is deferred |
 | Grep windows | ±100 tokens around **every** match, not a head clip |
 | Expansion clip | 4× the search clip, so expansion is worth calling |
@@ -58,7 +58,7 @@ Search round 2 of max 4.
 
 | Knob | Value | Note |
 |------|------:|------|
-| Searcher rounds | 4 | Submit turn included |
+| Searcher rounds | 4 | Ceiling; submit turn included and may happen earlier |
 | Parallel calls per round | 8 | Pruning counts toward it |
 | Chunk clip, search tools | 2,000 tokens | |
 | Chunk clip, expansion tools | 8,000 tokens | 4× search |

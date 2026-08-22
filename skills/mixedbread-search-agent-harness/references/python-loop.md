@@ -121,7 +121,7 @@ Every retrieval tool is a client-executed `function` the harness runs itself. Pa
 Two facts shape the terminal design:
 
 - `submit_answer` is a reserved tool name: declaring it fails the request with HTTP 422 (`'submit_answer' is reserved`). Name the harness terminal anything else; `TERMINAL_TOOL_NAME` above exists so the schema, the reminder text, and the executor cannot drift apart.
-- The model's default ending is ordinary assistant text, so a finished run never arrives as a `tool_call`. A controller that recognizes termination only by tool name will exhaust its round budget and fall through to the failure branch. Treat a `finish_reason="stop"` message with `content` as a terminal.
+- The model's default prose ending is ordinary assistant text, so a prose-only run never arrives as a `tool_call`. A controller that recognizes only tool terminals will exhaust its round budget and fall through to the failure branch. Treat a `finish_reason="stop"` message with `content` as the prose ending; when a structured terminal is offered and selected as the only call, accept it on any round.
 
 Before calling `complete(..., final_round=True)`, append the final-round instruction to the controller's persistent history; do not add it to a request-local copy that disappears before a correction attempt. When the deliverable is prose, pass `terminal_tool=None` and omit `tools`, `tool_choice`, and `parallel_tool_calls` entirely; do not send `tools=[]` with `tool_choice="none"`, because OpenAI-compatible backends may reject that combination. When the caller needs ranked evidence, pass a terminal schema built from currently visible evidence IDs — and force it by name on the final round. Named forcing is not optional: prompt instructions alone lose to a plain prose ending most of the time, and `tool_choice="required"` still returns assistant text with no visible call.
 
@@ -243,7 +243,31 @@ Keep every emitted call in the assistant transcript and return one matching tool
 
 ## Episode controller
 
+Fetch bootstrap facets and seed results before entering the controller loop. Register retained seed evidence before presenting it, then put the bootstrap payloads in an ordinary user-context message, not in synthetic assistant tool calls or `role="tool"` messages. Bootstrap is pre-round context, so the first completion still has `attempt_index == 0`.
+
 ```python
+def build_initial_messages(
+    query: str,
+    metadata_facets: dict[str, Any],
+    seed_results: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    bootstrap = {
+        "metadata_facets": metadata_facets,
+        "seed_search_results": seed_results,
+    }
+    return [
+        {
+            "role": "user",
+            "content": (
+                f"User query:\n{query}\n\n"
+                "Pre-round bootstrap context follows. It was fetched before search "
+                "round 1, is not a tool result, and consumes no search round.\n"
+                f"{json.dumps(bootstrap, ensure_ascii=False)}"
+            ),
+        }
+    ]
+
+
 def final_round_message(structured_terminal: bool) -> dict[str, str]:
     instruction = (
         "Make exactly one terminal call with no other or parallel calls."
@@ -281,10 +305,16 @@ def terminal_error_messages(message: Any, calls: list[Any], error: str) -> list[
 
 
 async def run_episode(query: str, *, structured_terminal: bool = False) -> dict[str, Any]:
+    metadata_facets, seed_results = await asyncio.gather(
+        fetch_metadata_facets(query),
+        seed_search(query),
+    )
+    evidence = EvidenceRegistry()
+    seed_results = budget_and_register_bootstrap(seed_results, evidence)
     episode = Episode(
-        messages=build_initial_messages(query),
+        messages=build_initial_messages(query, metadata_facets, seed_results),
         tools=tool_implementations(),
-        evidence=EvidenceRegistry(),
+        evidence=evidence,
     )
 
     force_terminal = False
@@ -411,7 +441,7 @@ async def run_episode(query: str, *, structured_terminal: bool = False) -> dict[
 
 Every tool call returns as `finish_reason="tool_calls"`, and the next API request must replay the assistant message plus one matching tool message per call.
 
-Leave `structured_terminal` off when the user-ready answer is the artifact; the model supplies it as text. Turn it on when the caller needs validated evidence IDs, scores, or any other structured payload, and accept the round it costs: the model still tends to end in prose, so the harness records that assistant message, charges it against the bounded correction budget, appends a persistent user correction, and forces the terminal rather than accepting unstructured output.
+Leave `structured_terminal` off when the user-ready answer is the artifact; the model supplies it as text. Turn it on when the caller needs validated evidence IDs, scores, or any other structured payload. The terminal remains available on every retrieval round and may end the episode early. If the model instead ends in prose, the harness records that assistant message, charges it against the bounded correction budget, appends a persistent user correction, and forces the terminal rather than accepting unstructured output.
 
 ## Evidence registry invariants
 
