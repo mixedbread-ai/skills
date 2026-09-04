@@ -4,7 +4,7 @@ The contracts the model was trained against, expressed against no particular ret
 
 Every tool name here is illustrative — name tools for your domain. A function tool may not share the name of a hosted tool declared in the same request (`duplicate_tool_name`). `submit_ranking` is the terminal the model was trained on, and `prune_context` its pruning tool.
 
-The argument sets and envelopes below are the reference harness's, and the model adapts to yours. What it does depend on: JSON results rather than prose, stable handles it can re-reference, ID-taking tools that accept only handles you emitted, and errors returned as data.
+The argument sets and envelopes below are illustrative, and the model adapts to yours. What it does depend on: JSON results rather than prose, stable handles it can re-reference, ID-taking tools that accept only handles you emitted, and errors returned as data.
 
 ## How the model reads a tool
 
@@ -42,51 +42,24 @@ The API always takes explicit JSON schema. In Python you can generate it from a 
 
 The description is the instruction: it names the mechanism, states the input form, forbids one misuse, and publishes the bound. The model writes human-style questions here, one aspect per query, and fans several out in parallel. Back it with the strongest retrieval available — late-interaction suits the model best, and a reranker materially improves what it sees.
 
-## BM25 keyword search
+## The other primitives
 
-The same shape; the contrast is the whole point, and it lives entirely in the wording:
+The pattern above is the whole of it; what changes is what must reach the description.
 
-> "Keyword-based BM25 search over the corpus. This tool matches keywords only — send keyword-heavy queries, not questions. Use for rare terms, names, codes, and exact vocabulary; use the semantic search tool for meaning-based queries. Returns up to top_k chunks with stable chunk_id handles."
+| Family | The description must say | Arguments that matter |
+|--------|--------------------------|-----------------------|
+| Lexical / BM25 | Keyword matching only, keyword-heavy input rather than questions, and which tool to use for meaning instead. Never label BM25 or any lexical retrieval as semantic | `query` ("space-separated keywords, no natural-language questions, no boolean operators"), bounded `top_k` |
+| Regex | The dialect by name (RE2, PCRE, Python `re`) and that it matches literally: exact tokens, codes, identifiers, function names, SKUs, quoted phrases | `pattern`, `targets` over every stored text field when OCR or transcription is separate, `case_sensitive = False`, optional filters |
+| Metadata facets | That sample values are representative, not exhaustive enums | none, or a field list |
+| Metadata listing | Which fields are filterable, and which are confirmed numeric | flat `filter_by` conditions (`key`, enum `operator`, JSON-native `value`), `filter_mode`, `rank_by`, `direction`, bounded `top_k` |
+| Expansion | The exact previously emitted handles it takes, and a published max list size | `chunk_ids: list[str]`, or one `chunk_id` with `before`/`after` for a neighbor window |
 
-with `query` described as "Space-separated keywords, no natural-language questions, no boolean operators. Example: 'jordan international goals caps'". Never label BM25 or any lexical retrieval as semantic.
-
-## Regex grep
-
-| Argument | Type | Notes |
-|----------|------|-------|
-| `pattern` | `str` | Name the actual dialect (RE2, PCRE, Python `re`) in the description |
-| `targets` | `list[Literal["text", "generated"]]` | Default both when OCR/transcription is stored separately |
-| `case_sensitive` | `bool = False` | |
-| Filters | optional | Verified fields only |
-
-Description: "Literal regular-expression matching; no embeddings, semantic match, or reranker. Use for exact tokens, codes, identifiers, function names, SKUs, and quoted phrases."
-
-Return a short window around **every** match, not a head clip — the matched token is why the chunk came back.
-
-## Metadata facets and listing
-
-Facets return real field paths, representative values, value types, and counts. State in the description that samples are representative, not exhaustive enums. Expose facets before any filtering tool: filters on non-existent keys return nothing rather than erroring.
-
-Listing arguments:
-
-| Argument | Type | Notes |
-|----------|------|-------|
-| `filter_by` | flat conditions: `key`, enum `operator`, JSON-native `value` | Build any nested tree yourself |
-| `filter_mode` | `Literal["all", "any"] = "all"` | |
-| `rank_by` | `str \| None` | Confirmed numeric fields only |
-| `direction` | `Literal["asc", "desc"] = "desc"` | |
-| `top_k` | bounded int | |
-
-Apply non-negotiable scope — tenant, permissions, collection — as a filter the model cannot see or override. Report whether numeric ranking was applied and how many values were non-numeric; never let a bad sort field crash the episode.
-
-## Expansion tools
-
-| Tool | Arguments | Contract |
-|------|-----------|----------|
-| Chunk expansion (`get_chunks`) | `chunk_ids: list[str]` | Exact previously emitted handles; publish a max list size |
-| Neighbor window (`read_document`) | `chunk_id: str, before: int, after: int` | Bounded window around one result |
-
-Both reject unknown IDs as structured data and preserve the original handles. Return meaningfully more text than search (~4× the clip) or the model has no reason to call them.
+- Expose facets before any filtering tool. A filter on a key that does not exist returns nothing rather than erroring, and the model cannot tell the two apart.
+- Apply non-negotiable scope — tenant, permissions, collection — as a filter the model never sees and cannot override.
+- Return a short window around **every** regex match, not a head clip: the matched token is why the chunk came back.
+- Expansion must return meaningfully more text than search (~4× the clip), or the model has no reason to call it.
+- Report a requested numeric sort that could not be applied, and how many values were non-numeric; never let a bad sort field end the episode.
+- ID-taking tools reject unknown handles as structured data and preserve the ones they were given.
 
 ## Prune tool
 
@@ -100,7 +73,7 @@ The model was trained on three terminal modes; the prompt and the declared tools
 
 | Mode | Declare | Ends with |
 |------|---------|-----------|
-| Ranking only (reference-harness default) | `submit_ranking` with `chunks` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices |
+| Ranking only | `submit_ranking` with `chunks` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices |
 | Ranking plus answer | The same, with a required `answer` | One call carrying evidence and answer |
 | Plain-text answer | No reporting tool, `tool_choice="auto"`; instruct that every response must contain tool calls until it answers, and that a plain-text reply with no tool calls ends the run ("Do not report chunk lists or rankings; deliver the answer itself.") | `finish_reason="stop"` with content |
 
@@ -124,7 +97,6 @@ In every mode, tell the model to base the answer only on retrieved evidence and 
 | `chunks` | May be empty when nothing is relevant; duplicate IDs are collapsed, not rejected |
 | `ranking_strategy` | Optional: "Briefly state how you interpreted the query, which hard constraints you applied, and how you ordered the final chunks" |
 | `answer` | Absent for ranking only. For ranking plus answer, required, with the trained description: "Your final answer to the original user query, based only on retrieved evidence. Required on every submit_ranking call: give your single best answer even when uncertain; if the evidence is insufficient to answer, say so." |
-| Count | `minItems`/`maxItems` for strict top-k, plus how to fill a weak tail; otherwise let the model choose and avoid padding |
 | Placement | The only call in its turn |
 
 When the round budget runs out, force the terminal turn with a short user message ("You have reached the search limit. Do NOT search further. Call submit_ranking now.") and `tool_choice` by name, with only the terminal declared:
@@ -133,11 +105,9 @@ When the round budget runs out, force the terminal turn with a short user messag
 tool_choice={"type": "function", "function": {"name": "submit_ranking"}}
 ```
 
-For a lookup subagent, the same tool carries a short rationale plus ranked chunks — the parent already has the evidence, so the rationale explains why those chunks answer the assigned aspect.
-
 ## Result envelope and stable handles
 
-Every retrieval tool returns a dict, never prose. The handles are the required part; the rest of this envelope is the reference harness's and yours to change:
+Every retrieval tool returns a dict, never prose. The handles are the required part; the rest of the envelope is yours to change:
 
 ```json
 {

@@ -219,7 +219,7 @@ The model was trained on three ways to end a run. Pick the one your application 
 
 | Mode | Declare | The run ends with |
 |------|---------|-------------------|
-| Ranking only (reference-harness default) | A `submit_ranking` function with `chunks[{chunk_id, relevance_score}]` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices; your application answers from the ranked chunks |
+| Ranking only | A `submit_ranking` function with `chunks[{chunk_id, relevance_score}]` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices; your application answers from the ranked chunks |
 | Ranking plus answer | The same function with a required `answer` string | One structured call carrying evidence and answer |
 | Plain-text answer | No reporting tool; `tool_choice="auto"`; instruct that every response must contain tool calls until it answers and that a plain-text reply ends the run | `content` with `finish_reason="stop"` |
 

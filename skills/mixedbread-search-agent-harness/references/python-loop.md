@@ -18,10 +18,10 @@ Every request after the first names the previous completion as `previous_complet
 | Part | Replace with |
 |------|--------------|
 | `load_corpus`, `BM25`, `Tools.bm25_search`, `Tools.grep`, `Tools.get_chunks` | Your backend. Keep the envelopes and route every result through `Evidence.show` so handles stay stable and deduplicated |
-| `SYSTEM_PROMPT`, `OUTPUT_RULES` | Your task description. Keep the tool contracts, the round line, and one OUTPUT block per answer mode; the full production prompt is in [reference-harness.md](reference-harness.md) |
+| `SYSTEM_PROMPT`, `OUTPUT_RULES` | Your task description. Keep the tool contracts, the round line, and one OUTPUT block per answer mode |
 | `terminal_schema` / `validate_terminal` | Your payload. Keep the registry validation, the enum of visible handles, and the `require_answer` switch |
-| `CONTEXT_MANAGEMENT`, the `previous_completion_id` chain | Keep both. A loop that must not store conversations sends `store=False`, resends the full transcript every request, and prunes it itself — see [reference-harness.md](reference-harness.md) for the budget notice |
-| `MAX_ROUNDS`, `MAX_PARALLEL_CALLS`, `CLIP_CHARS` | Your budgets; the defaults are the reference harness's |
+| `CONTEXT_MANAGEMENT`, the `previous_completion_id` chain | Keep both. A loop that must not store conversations sends `store=False`, resends the full transcript every request, and prunes it itself |
+| `MAX_ROUNDS`, `MAX_PARALLEL_CALLS`, `CLIP_CHARS` | Your budgets; the defaults are the ones the model was trained against |
 
 ## The listing
 
