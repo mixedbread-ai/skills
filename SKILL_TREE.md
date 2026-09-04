@@ -12,8 +12,8 @@ Build and query managed search indexes.
 
 Build search-grounded chat and custom search-agent runtimes.
 
-- **[mixedbread-search-agent](skills/mixedbread-search-agent/SKILL.md)** — Call Mixedbread's Toast-1 search model through the Chat Completions API: auth, parameters, tool calls, structured terminals, streaming, and stored conversations.
-- **[mixedbread-search-agent-harness](skills/mixedbread-search-agent-harness/SKILL.md)** — Build the loop: round budgets, parallel execution, stable evidence handles, pruning, terminal tools, and evaluation.
+- **[mixedbread-search-agent](skills/mixedbread-search-agent/SKILL.md)** — Call Mixedbread's Toast-1 search model through the Chat Completions and Responses APIs: choose between hosted store tools and your own function tools; auth, parameters, extension fields, structured terminals, streaming, and stored conversations.
+- **[mixedbread-search-agent-harness](skills/mixedbread-search-agent-harness/SKILL.md)** — Build your own harness with your own retrieval tools: round budgets, parallel execution, stable evidence handles, stored-completion continuation and context management, terminal modes, a runnable loop, offline tests, and evaluation.
 
 ## Parsing
 

@@ -1,8 +1,10 @@
 # Tool contracts for the search model
 
-The contracts the model was trained against, expressed against no particular retrieval engine. For the Mixedbread Stores wiring, read [mixedbread-tools.md](mixedbread-tools.md); for declaring tools and answering tool calls, see SKILL.md; for running them in a bounded loop, use the `mixedbread-search-agent-harness` skill.
+The contracts the model was trained against, expressed against no particular retrieval engine. They apply to the `function` tools you declare and execute yourself. The API's hosted store tools (`search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `get_chunks`) are these same contracts executed server-side and need none from you; they are covered by `hosted-tools.md` in the `mixedbread-search-agent` skill. Wiring these contracts to Mixedbread Stores is `mixedbread-tools.md` in the same skill; running them in a bounded loop is `python-loop.md` in the `mixedbread-search-agent-harness` skill.
 
-Every tool name here is illustrative — name tools for your domain. The one exception is `submit_answer`, which Mixedbread reserves: declaring it fails with HTTP 422.
+Every tool name here is illustrative — name tools for your domain. A function tool may not share the name of a hosted tool declared in the same request (`duplicate_tool_name`). `submit_ranking` is the terminal the model was trained on, and `prune_context` its pruning tool.
+
+The argument sets and envelopes below are the reference harness's, and the model adapts to yours. What it does depend on: JSON results rather than prose, stable handles it can re-reference, ID-taking tools that accept only handles you emitted, and errors returned as data.
 
 ## How the model reads a tool
 
@@ -14,40 +16,11 @@ Every tool name here is illustrative — name tools for your domain. The one exc
 | Bounds, in the description | Without a published max the model guesses and the whole call is rejected |
 | What comes back | Handles it can reference later |
 
-Arguments: flat, snake_case, JSON-native (`str`, `float`, `bool`, `list[str]`, at most one level of typed dict). `Literal`/enum for closed choices. Only essentials required, defaults for the rest.
+Names must match `^[a-zA-Z0-9_-]{1,64}$`, and must not collide with a declared hosted tool. Arguments: flat, snake_case, JSON-native (`str`, `float`, `bool`, `list[str]`, at most one level of typed dict). `Literal`/enum for closed choices. Only essentials required, defaults for the rest.
 
-In Python the docstring becomes the tool description and `Annotated` strings become parameter descriptions. The raw API always takes explicit JSON schema.
+The API always takes explicit JSON schema. In Python you can generate it from a function's docstring and `Annotated` hints instead of hand-writing it — `python-loop.md` in the `mixedbread-search-agent-harness` skill ships a `tool_schema` helper that does.
 
 ## Semantic search
-
-```python
-from typing import Annotated
-
-
-def semantic_search(
-    query: Annotated[str, "Natural-language query for a single search aspect; "
-                          "avoid Boolean syntax, regex, and keyword dumps."],
-    top_k: Annotated[int, "Number of chunks to return, max 20."] = 5,
-) -> dict:
-    """Execute a meaning-based semantic search query over the corpus and return the
-    most relevant chunks. Use natural language; phrase queries as human-style
-    questions. Do not use for keyword, regex, or literal-string matching.
-    Returns up to top_k chunks with stable chunk_id handles."""
-    hits = my_search_backend(query, top_k=top_k)  # your implementation
-    return {
-        "query": query,
-        "candidate_count": len(hits),
-        "results": [
-            {"chunk_id": h.id,               # short stable handle, e.g. "c12"
-             "score": round(h.score, 4),
-             "text": h.text,                 # clipped, not the whole document
-             "metadata": h.metadata}
-            for h in hits
-        ],
-    }
-```
-
-As explicit schema for the raw API:
 
 ```json
 {
@@ -61,37 +34,27 @@ As explicit schema for the raw API:
         "query": {"type": "string", "description": "Natural-language query for a single search aspect; avoid Boolean syntax, regex, and keyword dumps."},
         "top_k": {"type": "integer", "description": "Number of chunks to return, max 20.", "default": 5}
       },
-      "required": ["query"],
-      "additionalProperties": false
+      "required": ["query"]
     }
   }
 }
 ```
 
-The model writes human-style questions here, one aspect per query, and fans several out in parallel. Back it with the strongest retrieval available — late-interaction suits the model best, and a reranker materially improves what it sees.
+The description is the instruction: it names the mechanism, states the input form, forbids one misuse, and publishes the bound. The model writes human-style questions here, one aspect per query, and fans several out in parallel. Back it with the strongest retrieval available — late-interaction suits the model best, and a reranker materially improves what it sees.
 
 ## BM25 keyword search
 
-```python
-def bm25_search(
-    query: Annotated[str, "Space-separated keywords, no natural-language questions, "
-                          "no boolean operators. Example: 'jordan international goals caps'"],
-    top_k: Annotated[int, "Number of chunks to return, max 20."] = 10,
-    mode: Literal["chunks", "documents"] = "chunks",
-) -> dict:
-    """Keyword-based BM25 search over the corpus. This tool matches keywords only —
-    send keyword-heavy queries, not questions. Use for rare terms, names, codes,
-    and exact vocabulary; use the semantic search tool for meaning-based queries.
-    Returns up to top_k chunks with stable chunk_id handles."""
-```
+The same shape; the contrast is the whole point, and it lives entirely in the wording:
 
-Never label BM25 or any lexical retrieval as semantic.
+> "Keyword-based BM25 search over the corpus. This tool matches keywords only — send keyword-heavy queries, not questions. Use for rare terms, names, codes, and exact vocabulary; use the semantic search tool for meaning-based queries. Returns up to top_k chunks with stable chunk_id handles."
+
+with `query` described as "Space-separated keywords, no natural-language questions, no boolean operators. Example: 'jordan international goals caps'". Never label BM25 or any lexical retrieval as semantic.
 
 ## Regex grep
 
 | Argument | Type | Notes |
 |----------|------|-------|
-| `pattern` | `str` | Name the actual dialect (RE2, PCRE) in the description |
+| `pattern` | `str` | Name the actual dialect (RE2, PCRE, Python `re`) in the description |
 | `targets` | `list[Literal["text", "generated"]]` | Default both when OCR/transcription is stored separately |
 | `case_sensitive` | `bool = False` | |
 | Filters | optional | Verified fields only |
@@ -120,57 +83,61 @@ Apply non-negotiable scope — tenant, permissions, collection — as a filter t
 
 | Tool | Arguments | Contract |
 |------|-----------|----------|
-| Chunk expansion | `chunk_ids: list[str]` | Exact previously emitted handles; publish a max list size |
-| Neighbor window | `chunk_id: str, before: int, after: int` | Bounded window around one result |
+| Chunk expansion (`get_chunks`) | `chunk_ids: list[str]` | Exact previously emitted handles; publish a max list size |
+| Neighbor window (`read_document`) | `chunk_id: str, before: int, after: int` | Bounded window around one result |
 
 Both reject unknown IDs as structured data and preserve the original handles. Return meaningfully more text than search (~4× the clip) or the model has no reason to call them.
 
 ## Prune tool
 
-Nothing prunes for you. Prune-style removal beats summarizing compaction, which invalidates the stable prefix and loses evidence detail. Exposing pruning as a tool lets the model shed evidence it has judged irrelevant; instruct it to call the tool as it approaches the limit.
+Do not build one. Declare `context_management={"edits": [{"type": "prune_context"}]}` on the request and the API gives the model its `prune_context` tool over every tool result, yours included. Prune-style removal also beats summarizing compaction, which invalidates the stable prefix and loses evidence detail.
 
-```json
-{"name": "prune_context", "arguments": {"chunk_ids": ["c2", "c9"], "document_ids": ["d7"]}}
-```
-
-Require at least one emitted ID. Return what was pruned and which IDs were invalid. Pruning removes content, not identity — keep handles resolvable so the model can still rank or restore that evidence.
+Build your own only for a stateless loop (`store=False`) whose prunes must survive across turns. `prune_context` is a trained name with a trained shape: one `ids` argument addressing transcript results and spans, never retrieval handles — a same-named tool taking `chunk_ids` fights the policy. Pruning removes content, not identity: keep handles resolvable so the model can still rank or restore that evidence.
 
 ## Terminal tool
 
-By default the model ends by answering: `finish_reason="stop"` with assistant content and no tool call. When prose is the deliverable, that is the whole terminal contract.
+The model was trained on three terminal modes; the prompt and the declared tools decide which one a run uses:
 
-For structured output, define your own terminal under any name except `submit_answer` and force it by name on the final round. The trained shape is chunk IDs your tools emitted, a relevance score each, and short reasoning:
+| Mode | Declare | Ends with |
+|------|---------|-----------|
+| Ranking only (reference-harness default) | `submit_ranking` with `chunks` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices |
+| Ranking plus answer | The same, with a required `answer` | One call carrying evidence and answer |
+| Plain-text answer | No reporting tool, `tool_choice="auto"`; instruct that every response must contain tool calls until it answers, and that a plain-text reply with no tool calls ends the run ("Do not report chunk lists or rankings; deliver the answer itself.") | `finish_reason="stop"` with content |
+
+In every mode, tell the model to base the answer only on retrieved evidence and to say so when the evidence is insufficient. The trained shape:
 
 ```json
 {
-  "answer": "Complete answer grounded in the retrieved evidence",
-  "ranking_strategy": "How relevance and constraints determined the order",
   "chunks": [
     {"chunk_id": "c12", "relevance_score": 0.97},
     {"chunk_id": "c4", "relevance_score": 0.82}
-  ]
+  ],
+  "ranking_strategy": "How relevance and constraints determined the order",
+  "answer": "Complete answer grounded in the retrieved evidence"
 }
 ```
 
-| Requirement | Detail |
-|-------------|--------|
-| `answer` | Complete user-ready text, grounded in retrieved evidence only |
-| `relevance_score` | `[0, 1]` when ranked chunks are part of the task |
-| `chunk_id` | Enum of currently visible IDs; validate against the registry anyway |
+| Field | Trained shape |
+|-------|---------------|
+| `chunks[].chunk_id` | Enum of currently visible IDs; validate against the registry anyway |
+| `chunks[].relevance_score` | `[0, 1]`, ranked most relevant first |
+| `chunks` | May be empty when nothing is relevant; duplicate IDs are collapsed, not rejected |
+| `ranking_strategy` | Optional: "Briefly state how you interpreted the query, which hard constraints you applied, and how you ordered the final chunks" |
+| `answer` | Absent for ranking only. For ranking plus answer, required, with the trained description: "Your final answer to the original user query, based only on retrieved evidence. Required on every submit_ranking call: give your single best answer even when uncertain; if the evidence is insufficient to answer, say so." |
 | Count | `minItems`/`maxItems` for strict top-k, plus how to fill a weak tail; otherwise let the model choose and avoid padding |
-| Placement | The only call in its turn; deduplicate IDs |
+| Placement | The only call in its turn |
+
+When the round budget runs out, force the terminal turn with a short user message ("You have reached the search limit. Do NOT search further. Call submit_ranking now.") and `tool_choice` by name, with only the terminal declared:
 
 ```python
-tool_choice={"type": "function", "function": {"name": "report_evidence"}}
+tool_choice={"type": "function", "function": {"name": "submit_ranking"}}
 ```
-
-Without named forcing the model usually just answers in prose. `tool_choice="required"` does not fix it.
 
 For a lookup subagent, the same tool carries a short rationale plus ranked chunks — the parent already has the evidence, so the rationale explains why those chunks answer the assigned aspect.
 
 ## Result envelope and stable handles
 
-Every retrieval tool returns a dict, never prose:
+Every retrieval tool returns a dict, never prose. The handles are the required part; the rest of this envelope is the reference harness's and yours to change:
 
 ```json
 {
@@ -183,7 +150,7 @@ Every retrieval tool returns a dict, never prose:
 }
 ```
 
-Echo the query or pattern, report candidates remaining after deduplication, sort in presentation order, clip text to ~2,000 tokens.
+Sort in presentation order and clip text as it enters the tool message (~2,000 tokens works well). Echoing the query and a candidate count costs little and helps the model judge coverage.
 
 | Handle rule | Why |
 |-------------|-----|

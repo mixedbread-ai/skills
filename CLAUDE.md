@@ -8,8 +8,8 @@ Agent skills for building search, RAG, and document parsing with [Mixedbread](ht
   - `skills/mxbai-cli/` — CLI tool usage
   - `skills/mixedbread-search/` — Stores API & SDKs
   - `skills/mixedbread-parsing/` — Parsing API & OCR
-  - `skills/mixedbread-search-agent/` — Toast-1 completions API, tool contracts & Stores wiring
-  - `skills/mixedbread-search-agent-harness/` — Custom search-model harness design
+  - `skills/mixedbread-search-agent/` — Toast-1 Chat Completions API: hosted store tools, function tools, tool contracts & Stores wiring
+  - `skills/mixedbread-search-agent-harness/` — Bring-your-own-backend harness: the bounded loop, runnable reference, testing
 - `.claude-plugin/` — Claude Code plugin configuration
 - `.cursor-plugin/` — Cursor plugin configuration
 - `.mcp.json` — MCP server configuration
@@ -27,7 +27,8 @@ Agent skills for building search, RAG, and document parsing with [Mixedbread](ht
 - Prefer tables and code over prose. State the fact and the fix; cut the explanation of why unless the agent gets it wrong without it
 - Keep `SKILL.md` under 500 lines. Past that, move detail into `references/` and say in the pointer *when* to read each file
 - Do not duplicate broad public API reference docs. Bundle focused behavioral references when a skill depends on non-obvious product or harness contracts, and link public docs for the general surface.
-- Keep the search-model guidance backend-agnostic and isolate the Mixedbread wiring in its own reference. The model brings no retrieval of its own, so a skill that only shows Stores-backed tools teaches the wrong contract.
+- The Chat Completions and Responses APIs take two tool kinds: opt-in hosted Stores tools (`search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `get_chunks`, `list_stores`) that run server-side, and client `function` tools; without hosted tools a request is one generation over exactly what was sent. `mixedbread-search-agent` covers both and the choice between them; `mixedbread-search-agent-harness` is the bring-your-own-backend loop. Keep function-tool guidance backend-agnostic and isolate the hosted tools and the Stores wiring in their own references.
+- Verify API behavior against the API reference pages (`/api-reference/endpoints/chat/create-chat-completion.md`, `.../responses/create-response.md`) and the `completions/` examples in `mixedbread-ai/toast-harness` and a live request before asserting it.
 - Skills install as separate plugins, so a relative path into a sibling skill does not resolve. When two skills need the same reference — `tool-contracts.md` is the current case — duplicate the file in full rather than summarizing it in one of them, and update both copies together.
 - The served model id is `toast-1`.
 - SDK-facing examples normally cover both Python and TypeScript. Stores and parsing use the first-party SDKs (`mixedbread`, `@mixedbread/sdk`); the search agent uses the official OpenAI clients against Mixedbread's base URL. Harness-internal guidance may stay Python.

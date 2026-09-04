@@ -80,8 +80,8 @@ Reference the `gemini-extension.json` for extension configuration, or use the `.
 | [`mxbai-cli`](skills/mxbai-cli/SKILL.md) | Manage stores, upload files, search, and sync using the `mxbai` CLI |
 | [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
 | [`mixedbread-parsing`](skills/mixedbread-parsing/SKILL.md) | Parse documents, extract structured content, and run OCR using the Parsing API |
-| [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions API |
-| [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Build the loop around Toast-1: rounds, parallelism, evidence handles, pruning |
+| [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions and Responses APIs: hosted store tools, function tools, terminal modes, context management |
+| [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Build your own harness around Toast-1: rounds, parallelism, evidence handles, stored-completion continuation, a runnable loop |
 
 See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills.
 
@@ -102,8 +102,8 @@ mixedbread-skills/
     ├── mxbai-cli/           # CLI tool usage
     ├── mixedbread-search/   # Stores API & SDKs
     ├── mixedbread-parsing/  # Parsing API & OCR
-    ├── mixedbread-search-agent/ # Chat Completions API, tool contracts & Stores wiring
-    └── mixedbread-search-agent-harness/ # Custom search-model harness design
+    ├── mixedbread-search-agent/ # Chat Completions + Responses APIs: hosted tools, function tools, Stores wiring
+    └── mixedbread-search-agent-harness/ # Bring-your-own-backend harness loop
 ```
 
 ## Links
