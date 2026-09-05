@@ -1,24 +1,20 @@
 ---
 name: mixedbread-search-agent
 description: >-
-  Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions and
-  Responses APIs. Use when choosing between the hosted store tools (search_corpus, grep,
-  filter_chunks, inspect_metadata, get_chunks, list_stores) and your own function tools,
-  authenticating against the completions endpoint, setting request parameters and Mixedbread
-  extension fields (include, max_tool_calls, context_management), answering function tool calls,
-  choosing a terminal mode, streaming, continuing stored conversations with previous_completion_id
-  or previous_response_id, or debugging completions errors such as duplicate_tool_name,
-  store scope validation, context_length_exceeded, or SDK extension fields.
+  Call Mixedbread's Toast-1 model through the Chat Completions and Responses APIs.
+  Use for hosted Stores tools, custom function calls, authentication, endpoint parameters,
+  streaming, stored continuation, context management, and API errors.
+  For custom harness design and retrieval evaluation, use mixedbread-search-agent-harness.
 ---
 
 # Mixedbread Search Agent
 
 Toast-1 is Mixedbread's search model: a deep search and lookup agent trained end-to-end to gather evidence and answer from it — as a ranked evidence list, ranked evidence plus an answer, or a plain-text answer. It is served over two OpenAI-compatible endpoints, Chat Completions and Responses, and takes two kinds of tools:
 
-- **Hosted store tools** — `search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `get_chunks`, `list_stores`. Opt-in per request; the server runs the whole search loop over your Mixedbread Stores and the request returns with the answer. They share names, schemas, and behavior with the open-source [toast-harness](https://github.com/mixedbread-ai/toast-harness).
+- **Hosted store tools** — `search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `get_chunks`, `list_stores`. Opt-in per request; the server runs the whole search loop over your Mixedbread Stores and the request returns with the answer. Use the API reference for their wire contract; the open-source [toast-harness](https://github.com/mixedbread-ai/toast-harness) illustrates retrieval and orchestration patterns.
 - **Function tools** — ordinary `function` schemas your application executes and feeds back, so the corpus can live anywhere: Stores, a vector DB, Elasticsearch, SQL, or the filesystem.
 
-A request without hosted tools is one generation over exactly what you sent.
+With no hosted retrieval or server-side context editing, a request performs one model generation. Custom function calls return to your application for execution.
 
 Docs: https://www.mixedbread.com/docs/agent/chat-completions and https://www.mixedbread.com/docs/agent/responses
 Harness guide: https://www.mixedbread.com/docs/agent/build-your-own-harness
@@ -31,12 +27,12 @@ Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
 | You want | Do | Read |
 |----------|----|------|
 | Search-grounded answers over Stores, no retrieval code | One request with hosted tools in `tools`; the answer is the text | [Hosted store tools](#hosted-store-tools), [hosted-tools.md](references/hosted-tools.md) |
-| Hosted retrieval plus your own functions or a structured ending | Hosted tools and `function` tools in one request; force the terminal on a follow-up turn with `previous_completion_id` | [hosted-tools.md § Hybrid](references/hosted-tools.md#hybrid-hosted-retrieval-your-terminal) |
+| Hosted retrieval plus your own functions or a structured ending | Combine hosted and function tools; handle returned function calls and force a terminal if needed | [hosted-tools.md § Hybrid](references/hosted-tools.md#hybrid-hosted-retrieval-your-terminal) |
 | Your own backend and your own loop | Declare only `function` tools and run a bounded loop | `mixedbread-search-agent-harness` skill, [tool-contracts.md](references/tool-contracts.md) |
 | Your own loop with Stores as the backend | Function tools wired to the Stores API | [mixedbread-tools.md](references/mixedbread-tools.md) |
 | A ranked chunk list or a cited answer with no completions call | `stores.search(search_options={"agentic": True})` or `stores.question_answering()` | `mixedbread-search` skill |
 
-Both endpoints take the same tools and extensions. The Responses API is the primary surface for hosted tools and stored conversations; Chat Completions is the message-based surface and the one to bring your own harness to. This skill is written against Chat Completions; [Responses API](#responses-api) maps the differences.
+Both endpoints take the same tools and extensions. The Responses API is the primary surface for hosted tools and stored conversations; Chat Completions is the message-based surface. Either endpoint can support a custom harness. This skill is written against Chat Completions; [Responses API](#responses-api) maps the differences.
 
 ## Authentication
 
@@ -82,18 +78,20 @@ completion = client.chat.completions.create(
 )
 
 message = completion.choices[0].message
-if message.tool_calls:
-    ...                     # your function calls: execute, append results, send the next request
-else:
-    print(message.content)  # finish_reason == "stop": the run is done
+if completion.choices[0].finish_reason == "length":
+    ...                     # incomplete: recover or report it explicitly
+elif message.tool_calls:
+    ...                     # execute your functions and continue
+elif (message.content or "").strip():
+    print(message.content)
 ```
 
 | Parameter | Send | Notes |
 |-----------|------|-------|
 | `model` | `"toast-1"` | Also the default when omitted |
-| `messages` | Full history, or only the new suffix with `previous_completion_id` | Sent as-is: nothing is added or removed. Roles: `system`, `developer` (handled as system instructions), `user`, `assistant`, `tool` |
-| `tools` | Hosted entries such as `{"type": "search_corpus", ...}`, `function` schemas, or both | No tools: one generation from the prompt alone |
-| `tool_choice` | `"auto"` (default), `"none"`, `"required"`, `{"type": "function", "function": {"name": ...}}`, or a hosted type: `search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `list_stores` (**not** `get_chunks`) | With hosted tools it applies to the first model turn; later turns of the server loop use `auto` |
+| `messages` | Full history, or only the new suffix with `previous_completion_id` | Hosted tools and declared context editing can add or prune model context. Roles: `system`, `developer` (handled as system instructions), `user`, `assistant`, `tool` |
+| `tools` | Hosted entries such as `{"type": "search_corpus", ...}`, `function` schemas, or both | Without tools or context edits: one generation |
+| `tool_choice` | `"auto"` (default), `"none"`, `"required"`, a named function object, or a hosted object such as `{"type": "search_corpus"}` | Hosted forcing supports `search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, and `list_stores`; it applies to the first server turn, then selection returns to `auto`. `get_chunks` is not forceable |
 | `parallel_tool_calls` | `true` (default) | The model fans out by design; `false` on a forced terminal turn |
 | `temperature` / `top_p` | `0.7` / `0.95` | Recommended, not API defaults — send them explicitly. Ranges 0–2 and 0–1 |
 | `max_completion_tokens` | Omit | Generation defaults to 4,096, minimum 16; raise it when you need more. `max_tokens` is a deprecated alias, honored only when this is absent |
@@ -112,24 +110,7 @@ Mixedbread extension fields go in `extra_body` in Python and inline with a cast 
 
 Unknown fields are ignored; `chat_template_kwargs` is not a parameter.
 
-```python
-second = client.chat.completions.create(
-    model="toast-1",
-    messages=[{"role": "user", "content": "And when does it expire?"}],
-    tools=TOOLS, store=True,
-    extra_body={"previous_completion_id": first.id, "include": ["search_corpus_call.results"]},
-)
-```
-
-```typescript
-// Node takes extension fields inline; there is no extra_body option.
-const second = await client.chat.completions.create({
-  model: 'toast-1',
-  messages: [{ role: 'user', content: 'And when does it expire?' }],
-  tools, store: true,
-  previous_completion_id: first.id, include: ['search_corpus_call.results'],
-} as never);
-```
+Continuation examples are in [Stored conversations](#stored-conversations).
 
 ## Reading the response
 
@@ -153,34 +134,9 @@ edits = ((completion.model_extra or {}).get("context_management") or {}).get("ap
 
 ## Hosted store tools
 
-```python
-completion = client.chat.completions.create(
-    model="toast-1",
-    messages=[{"role": "user", "content": "Which products cost less than 100, and what are their prices?"}],
-    tools=[
-        {"type": "search_corpus", "store_identifiers": ["product-catalog"]},
-        {"type": "grep", "store_identifiers": ["product-catalog"]},
-    ],
-    store=False,
-    extra_body={"max_tool_calls": 8, "include": ["search_corpus_call.results"]},
-)
-print(completion.choices[0].message.content)
-for call in (completion.model_extra or {}).get("hosted_tool_calls") or []:
-    print(call["type"], call["status"], call.get("error"),
-          [c["chunk_id"] for c in call.get("results") or []])
-```
-
-| Rule | Detail |
-|------|--------|
-| Opt-in per request | A hosted tool runs only when its entry is in `tools`. To bring your own backend, list none of them |
-| One scope | Every store-scoped tool takes `store_identifiers`, and all declared store tools must share one scope; mixed scopes are rejected. Omit it to open the scope: `list_stores` becomes required, and each store tool takes a required `store` argument the model fills per call |
-| Budget | `max_tool_calls` (default 16) bounds the server-executed calls; at most 8 run per model turn, extra calls get a structured error |
-| How a run ends | On a plain-text reply, or a call to one of your function tools (returned to you). At the budget the model is told once to answer in plain text from what it has; if it does neither, the completion ends with `finish_reason="length"` and the text produced so far. The API never writes an answer for the model |
-| Default instructions | With a hosted tool declared and no system text, the model gets a two-sentence default system message; any instruction text you send replaces it entirely |
-| Chunk references | `chunk_id = "<file_id>:<chunk_index>"`, stable across requests; every chunk also carries a `document_id`. The `file_id` resolves against the store files API |
-| Name collisions | A function tool may not share the name of a declared hosted tool (`duplicate_tool_name`) |
-
-Per-tool fields and defaults, result shapes, streaming, citations, and complete examples in Python and TypeScript are in [hosted-tools.md](references/hosted-tools.md).
+Declare hosted tools only when you want server-side retrieval over Mixedbread Stores. They can be
+combined with custom functions under different names. Read [hosted-tools.md](references/hosted-tools.md)
+for store scope, tool-entry fields, returned evidence, citations, and a hybrid terminal recipe.
 
 ## Function tools
 
@@ -188,7 +144,10 @@ Tools are ordinary `function` schemas. What to declare and how to describe them 
 
 `finish_reason="tool_calls"` means the model is waiting on you. Send exactly one `tool` message per `tool_call_id` — including for calls you rejected or that failed; an assistant tool call with no matching `tool` message makes the next request invalid. Continuing with `previous_completion_id`, the tool messages are the whole next request; resending the history yourself, append the assistant turn first.
 
-Serialize results as JSON, never prose, and return failures as data: a tool that raises past the executor leaves its call unanswered and breaks the next request, while `{"error": "..."}` lets the model correct itself on the following round.
+Prefer JSON results for clear, consistent tool output; the envelope is your choice. Catch errors at the executor boundary and return useful failure information so the model can recover while the protocol remains valid.
+
+These serial snippets illustrate the message protocol. For a search harness, execute independent
+retrieval calls concurrently; the harness skill's Python example shows bounded parallel execution.
 
 ```python
 messages.append(message.model_dump(exclude_none=True))
@@ -215,41 +174,37 @@ for (const call of message.tool_calls ?? []) {
 
 ## Terminal modes
 
-The model was trained on three ways to end a run. Pick the one your application consumes and say so in the prompt:
+The public harness uses ranked evidence, evidence plus an answer, or plain text. These are useful
+starting points; custom terminal names and payloads are supported. See the optional shapes and
+validation guidance in [tool-contracts.md](references/tool-contracts.md#terminal-tools).
 
-| Mode | Declare | The run ends with |
-|------|---------|-------------------|
-| Ranking only | A `submit_ranking` function with `chunks[{chunk_id, relevance_score}]` and `ranking_strategy` | The model calls `submit_ranking` itself once the evidence suffices; your application answers from the ranked chunks |
-| Ranking plus answer | The same function with a required `answer` string | One structured call carrying evidence and answer |
-| Plain-text answer | No reporting tool; `tool_choice="auto"`; instruct that every response must contain tool calls until it answers and that a plain-text reply ends the run | `content` with `finish_reason="stop"` |
-
-When the round budget runs out, force the terminal with a short user message and `tool_choice` by name, continuing the stored completion:
-
-```python
-final = client.chat.completions.create(
-    model="toast-1",
-    messages=[{"role": "user", "content": "You have reached the search limit. Do NOT search further. Call submit_ranking now."}],
-    tools=[SUBMIT_RANKING],
-    tool_choice={"type": "function", "function": {"name": "submit_ranking"}},
-    parallel_tool_calls=False,
-    extra_body={"previous_completion_id": last.id},
-)
-submission = json.loads(final.choices[0].message.tool_calls[0].function.arguments)
-```
-
-The schema and the trained wording are in [tool-contracts.md](references/tool-contracts.md#terminal-tool). A hosted run ends in plain text at its search limit, so over hosted retrieval this forced turn is the normal way to get the structured payload — recipe in [hosted-tools.md](references/hosted-tools.md#hybrid-hosted-retrieval-your-terminal).
+Offer a terminal during exploration if you want structured output. Forcing that function by name
+can recover a prose ending or enforce a final turn at your chosen cap. The
+[hybrid recipe](references/hosted-tools.md#hybrid-hosted-retrieval-your-terminal) covers this after
+hosted retrieval. Check `finish_reason` and validate results before accepting them.
 
 ## Context management
+
+We recommend server-side pruning even when you build the entire retrieval loop yourself:
 
 ```python
 extra_body={"context_management": {"edits": [{"type": "prune_context"}]}}
 ```
 
-| Declared | Not declared |
-|----------|--------------|
-| The model gets a `prune_context` tool over every tool result it has read, server or client, and clears stale results as the conversation approaches the window. Accepted with any tool set, a no-op until something prunable accumulates; prune calls count against `max_tool_calls`. `context_management.applied_edits` reports what was cleared; the stored conversation keeps every tool result as sent, and `previous_completion_id` stays valid | Nothing is edited. An oversized request fails with `422 context_length_exceeded_error`, never a silent truncation; a stateless loop prunes the history it resends, and after such edits must resend the full history without `previous_completion_id` |
+Declare it on each request. The API gives the model a pruning tool over both hosted and custom
+function results; pruning counts against `max_tool_calls`. The public harness addresses chunks,
+while the API uses response and span references internally to prune general tool output. You do
+not need to reproduce either implementation or manage those internal references.
 
-Declaring it is the answer to context pressure in every shape: a hosted run manages its own results, and a bring-your-own-backend loop gets the same tool over its function results. Managing context yourself is only for a stateless loop (`store=False`) whose prunes must survive across turns.
+`context_management.applied_edits` reports applied pruning and overflow-recovery truncation.
+Stored conversation content is retained; edits affect the model's context and carry forward through
+stored continuation. With a full-history resend, previously pruned content returns unless you also
+edit that history. A stateless loop can still request server-side pruning for each request.
+
+Without declared context editing, an oversized input fails with `422 context_length_exceeded_error`.
+Clip incoming payloads and leave headroom even when pruning is enabled. If you choose to edit
+history yourself, resend the edited history without a continuation ID. Custom context policies
+and framework compaction are also options; account for evidence identity and restoration.
 
 ## Stored conversations
 
@@ -264,13 +219,23 @@ second = client.chat.completions.create(
 )
 ```
 
+```typescript
+const second = await client.chat.completions.create({
+  model: 'toast-1',
+  messages: [{ role: 'user', content: 'And when does it expire?' }],
+  tools, store: true,
+  previous_completion_id: first.id,
+  context_management: { edits: [{ type: 'prune_context' }] },
+} as never); // Mixedbread extensions go inline in Node, not in extra_body.
+```
+
 | Rule | Detail |
 |------|--------|
 | `store` defaults to `true` | Every completion is retrievable unless you send `store=False` |
 | Send only the new suffix | The stored context is restored from `previous_completion_id`; do not resend the assistant turn it already holds |
-| Configuration is not stored | Only the conversation is. `tools`, sampling parameters, and `context_management` go with every request |
-| Hosted context comes back | Hosted calls, their results, and server-side context edits are restored — the only way a later turn can cite hosted evidence |
-| Edited the history yourself? | Resend all of it without `previous_completion_id`; the request is honored exactly as sent |
+| Resend request configuration | Send `tools`, sampling parameters, and `context_management` on every request; do not rely on continuation to inherit them |
+| Hosted context comes back | Hosted calls, their results, and server-side context edits are restored. This avoids manually reconstructing evidence for a follow-up |
+| Edited the history yourself? | Resend all of it without `previous_completion_id`; that history becomes the starting context. Declared hosted tools and context editing can still modify model context |
 | One chain, one conversation | Completions joined by `previous_completion_id` group into one conversation for listing, and `DELETE /v1/chat/completions/{id}` removes every turn in it |
 
 ## Streaming
@@ -287,7 +252,7 @@ for chunk in stream:
             show_answer(choice.delta.content)
 ```
 
-Streamed function calls arrive as `delta.tool_calls` fragments and must be accumulated by index before execution. `context_management` arrives on the final usage chunk. Non-streaming and streaming report identical final content.
+Streamed function calls arrive as `delta.tool_calls` fragments and must be accumulated by index before execution. `context_management` arrives on the final usage chunk. Check the final finish reason before treating streamed text as a complete answer.
 
 ## Responses API
 
@@ -301,13 +266,16 @@ response = client.responses.create(
     include=["search_corpus_call.results"],
     extra_body={"context_management": {"edits": [{"type": "prune_context"}]}},
 )
+if response.status != "completed":
+    raise RuntimeError(f"Response did not complete: {response.status}")
 print(response.output_text)
 ```
 
 | Responses | Chat Completions |
 |-----------|------------------|
 | `input` (a string or items) and `instructions` | `messages` |
-| Flat function tools `{"type": "function", "name", "description", "parameters", "strict"}`; calls arrive as `function_call` output items; reply with `function_call_output` items carrying the `call_id` | `tools[].function`, `message.tool_calls`, `tool` messages |
+| Flat function tools with `type`, `name`, `description`, `parameters`, and optional `strict`; calls are `function_call` output items; answer with `function_call_output` carrying `call_id` | `tools[].function`, `message.tool_calls`, `tool` messages |
+| Force a function with `{"type": "function", "name": "..."}` | `{"type": "function", "function": {"name": "..."}}` |
 | `previous_response_id` (the chain needs `store: true`); new `instructions` replace the previous response's | `previous_completion_id` |
 | `hosted_tool_calls` beside `output` | `hosted_tool_calls` beside `choices` |
 | `status: "incomplete"` with `incomplete_details.reason` in `max_output_tokens`, `max_tool_calls`, `context_window` | `finish_reason: "length"` |
@@ -325,6 +293,12 @@ Streaming emits the standard semantic events plus `response.output_item.added`/`
 | Output | 4,096 tokens by default; larger `max_completion_tokens` accepted | `finish_reason="length"` when hit |
 | Server-executed calls | `max_tool_calls` (default 16), at most 8 per turn | Extra calls get a structured error; at the cap the model is asked for a plain-text answer |
 | Thinking | Disabled at the chat template | `reasoning_content` is always `null`, `reasoning_tokens` always `0`; `chat_template_kwargs` is not a parameter |
+
+## References
+
+- [hosted-tools.md](references/hosted-tools.md) — read when declaring hosted store tools: per-tool fields and defaults, call item and result shapes, `include`, streaming, citations, the hybrid recipe, complete Python and TypeScript examples.
+- [tool-contracts.md](references/tool-contracts.md) — optional backend-agnostic guidance for descriptions, evidence envelopes, errors, and terminal formats.
+- [mixedbread-tools.md](references/mixedbread-tools.md) — read when backing function tools with Mixedbread Stores yourself: the call behind each primitive, filters, chunk identity, gotchas.
 
 ## Troubleshooting
 
@@ -346,9 +320,3 @@ Streaming emits the standard semantic events plus `response.output_item.added`/`
 | `finish_reason="length"` on a hosted run, no answer | Tool-call or context budget spent without a plain-text reply | Raise `max_tool_calls`, or declare `context_management` |
 | `previous_completion_id` seems ignored | Prior call used `store=False`, or the resent history was edited | Store the completion you continue; after your own edits resend everything without it |
 | `TypeError` on `function.arguments` | Treated as a dict | It is a JSON string — parse it |
-
-## References
-
-- [hosted-tools.md](references/hosted-tools.md) — read when declaring hosted store tools: per-tool fields and defaults, call item and result shapes, `include`, streaming, citations, the hybrid recipe, complete Python and TypeScript examples.
-- [tool-contracts.md](references/tool-contracts.md) — read before writing any function tool schema: primitives, description patterns, the schema generator, result envelope, stable handles, error envelope, the terminal tool and its three modes. Backend-agnostic.
-- [mixedbread-tools.md](references/mixedbread-tools.md) — read when backing function tools with Mixedbread Stores yourself: the call behind each primitive, filters, chunk identity, gotchas.

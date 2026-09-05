@@ -1,6 +1,6 @@
 # Backing function tools with Mixedbread Stores
 
-For a loop you run yourself with Stores as the backend. If you only need Stores retrieval and no custom tools, declare the hosted tools instead and skip this file — see [hosted-tools.md](hosted-tools.md): `search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, and `get_chunks` are exactly the wirings below, executed server-side. Stores are a natural backend for this model: the semantic endpoint is late-interaction retrieval with an optional reranker, and grep, listing, facets, and chunk retrieval cover the remaining primitives.
+For a loop you run yourself with Stores as the backend. Hosted tools are an alternative when you want the API to manage retrieval — see [hosted-tools.md](hosted-tools.md). The examples below show custom function implementations; their names and interfaces are yours to adapt.
 
 Read [tool-contracts.md](tool-contracts.md) for the schemas, envelopes, and descriptions; SKILL.md for the API. This is only the wiring. For building the Stores themselves, use the `mixedbread-search` skill.
 
@@ -14,7 +14,7 @@ Read [tool-contracts.md](tool-contracts.md) for the schemas, envelopes, and desc
 | `metadata_facets` | `stores.metadata_facets()` | Nothing — it describes the corpus | `inspect_metadata` |
 | `expand_chunks` | `stores.files.retrieve()` | Known chunk identity | `get_chunks` |
 
-Pin `store_identifiers` inside the implementation from application config. Leaving it out of the tool schema entirely removes hallucinated store names as a failure mode; expose a store argument only when the model genuinely must choose, and pair it with `stores.list()` so it can discover real names.
+For a fixed corpus, pin `store_identifiers` in application config. If the model chooses stores, `stores.list()` can help it discover valid names. Enforce access scope independently of that choice.
 
 ## Client setup
 
@@ -61,7 +61,7 @@ const response = await mxbai.stores.search({
 });
 ```
 
-Keep `rerank` on for production retrieval; it materially improves what the model sees. Do not combine it with `search_options={"agentic": True}`: agentic search runs Mixedbread's own harness inside the Search API and is an alternative to this loop, not a component of it.
+Consider `rerank` for better evidence quality and measure its latency tradeoff. Using `search_options={"agentic": True}` invokes another search-agent loop; use that when you deliberately want nested agentic retrieval, and account for its additional work.
 
 ## Grep
 
@@ -109,9 +109,9 @@ if rank_by:
 response = mxbai.stores.list_chunks(**kwargs)
 ```
 
-A `sort_by` field the backend cannot order server-side raises `UnprocessableEntityError`; catch it and rank client-side rather than failing the tool call.
+A `sort_by` field the backend cannot order server-side raises `UnprocessableEntityError`. Report the limitation, or use a client-side fallback that clearly states which retrieved subset it ordered.
 
-`sort_by` takes a field name or `[field, ascending]`. Unprefixed paths target file metadata; `generated_metadata.*` targets chunk metadata. Only sort on numeric fields, and report back how many values were non-numeric or missing rather than failing the call.
+`sort_by` takes a field name or `[field, ascending]`. Unprefixed paths target file metadata; `generated_metadata.*` targets chunk metadata. For numeric metric ordering, confirm the field's type and report non-numeric or missing values. Other ordering depends on the backend's supported sorts.
 
 ## Metadata facets
 
@@ -120,7 +120,7 @@ facets = mxbai.stores.metadata_facets(store_identifiers=STORE_IDENTIFIERS)
 # {"year": {"2023": 1, "2024": 1}, "author": {"Dana Lee": 1, "Joe Smith": 1}}
 ```
 
-Expose this before any filtering tool. Filter keys that do not exist return nothing silently, so facet discovery is what stops a plausible-looking guess from quietly returning zero results.
+Use facets or metadata on results to confirm unfamiliar filter keys. A nonexistent key can quietly produce zero results.
 
 ## Chunk expansion
 
@@ -132,7 +132,7 @@ file = mxbai.stores.files.retrieve(
 )
 ```
 
-Pass `file_identifier` by keyword: positional works with the SDK but fails the `RetrievalClient` protocol check in toast-harness. Resolve the model's handles to `(file_id, chunk_index)` yourself and validate the range: an index past the end of the file fails with HTTP 422 (`Invalid chunk indices: [0, 1], but must be between 0 and 0`). Clamp and return a structured error instead of letting that reach the model as an exception.
+Resolve evidence references to `(file_id, chunk_index)` and validate the requested range. An out-of-range index fails with HTTP 422; return an informative tool error rather than allowing an exception to escape the executor.
 
 Chunks from this endpoint carry `chunk_index`, `text`, `offset`, and `generated_metadata` but not `file_id` or `filename` — those live on the parent file object, so re-attach them from your registry.
 
@@ -151,10 +151,10 @@ filters = {
 
 Operators: `eq`, `not_eq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `contains`, `starts_with`, `regex`.
 
-Give the model a flat condition list plus a `filter_mode: "all" | "any"` and build the tree yourself. Apply non-negotiable application scope as a filter the model cannot see or override, and merge it with whatever the model supplies.
+A flat condition list plus `filter_mode: "all" | "any"` can simplify the model's interface; your function can build the tree. Enforce application access scope independently of model-supplied filters.
 
 ## Chunk identity and available fields
 
-`stores.search`, grep, and list-chunks all return the same chunk shape, so one envelope serves all three. Chunk identity is `(store_id, file_id, chunk_index)` on every retrieval endpoint — map it once to a short handle and keep the mapping on the application side.
+`stores.search`, grep, and list-chunks share a chunk shape, so a common envelope can serve all three. Preserve `(store_id, file_id, chunk_index)` as the source identity. Short handles are optional; keep references stable across calls and retain their provenance application-side.
 
 Fields available for the envelope: `text`, `score`, `filename`, `file_id`, `store_id`, `external_id`, `chunk_index`, `offset`, `metadata`, `generated_metadata`, `summary`, `context`, `type`, and `mime_type`. `text` is a text chunk's field; image chunks carry `ocr_text` and audio/video chunks `transcription` instead, so fall back across them when the store is not text-only.

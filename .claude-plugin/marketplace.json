@@ -5,7 +5,7 @@
     "name": "Mixedbread"
   },
   "metadata": {
-    "version": "1.2.0",
+    "version": "1.2.1",
     "description": "Agent skills for search, RAG, parsing, completions, and model harnesses with Mixedbread."
   },
   "plugins": [
@@ -35,7 +35,7 @@
     },
     {
       "name": "mixedbread-search-agent-harness",
-      "description": "Build your own harness around Mixedbread's Toast-1 search model: bounded rounds, parallel execution, evidence handles, stored-completion continuation, context management, terminal modes, a runnable loop, offline tests.",
+      "description": "Design a Toast-1 harness for your backend or framework: exploration, evidence handling, context budgets, and evaluation, with optional runnable examples.",
       "source": "./skills/mixedbread-search-agent-harness",
       "skills": ["./"]
     }

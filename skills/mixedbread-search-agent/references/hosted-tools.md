@@ -1,6 +1,9 @@
 # Hosted store tools
 
-The six tools the Chat Completions and Responses APIs can run server-side over your Mixedbread Stores. Declare them in `tools` and the model searches for as many rounds as it needs inside one request; only your own `function` tools ever come back as `tool_calls`. They share names, schemas, defaults, and truncation behavior with the open-source [toast-harness](https://github.com/mixedbread-ai/toast-harness), the reference for exact schemas; its `completions/hosted_tools.py` is the runnable version of the example below. Contract: https://www.mixedbread.com/docs/agent/responses#search-your-stores-with-hosted-tools and the API reference.
+The Chat Completions and Responses APIs can execute these tools over Mixedbread Stores.
+Their configuration and returned fields follow the [API reference](https://www.mixedbread.com/api-reference/endpoints/chat/create-chat-completion).
+The public [toast-harness](https://github.com/mixedbread-ai/toast-harness) provides implementation
+examples; its internal schemas are not the hosted API contract.
 
 ## Tool entries
 
@@ -10,11 +13,11 @@ The six tools the Chat Completions and Responses APIs can run server-side over y
 | `grep` | `store_identifiers`, `max_num_results`, `filters`, `citations` | 10 chunks (1–30) | Regex over the literal chunk text, no embeddings; ~100-token windows around each match, overlapping windows merged |
 | `filter_chunks` | `store_identifiers`, `max_num_results`, `filters`, `citations` | 30 chunks (1–30); the model asks for 10 by default | Metadata-filtered listing, optional numeric `rank_by`; a non-numeric field degrades to `rank_by_applied: false` with a count |
 | `inspect_metadata` | `store_identifiers`, `filters`, `max_values_per_field` | 8 values per field (1–20) | Field and value overview from 100 sampled chunks, plus `rankable_fields` for `filter_chunks` |
-| `get_chunks` | `store_identifiers` | up to 20 IDs per call | Re-fetches chunks the run has seen, ~8,000 tokens each (4× the search clip); unknown or pruned IDs come back as per-ID errors |
+| `get_chunks` | `store_identifiers` | up to 20 IDs per call | Re-fetches known chunks with more context; unavailable IDs return per-ID errors |
 | `list_stores` | `limit` | 20 (1–100) | Paginated listing of the stores the key can see |
 
 - `filters` (the Stores filter tree) and `score_threshold` apply to every call of that tool, invisibly to the model; use them for non-negotiable scope such as a tenant.
-- `store_identifiers` takes IDs or names. All declared store tools must share one scope; mixed scopes are rejected. Omit it to open the scope: `list_stores` is then required and each store tool gains a required `store` argument the model fills with exactly one store per call — except `get_chunks`, whose chunk IDs already carry the store.
+- `store_identifiers` takes IDs or names. All declared store tools must share one scope; mixed scopes are rejected. Omit it to open the scope: `list_stores` is then required and each store tool gains a required `store` argument the model fills with exactly one store per call — except `get_chunks`, whose known chunk IDs resolve to the store.
 - Unknown fields on an entry are ignored; a wrong `type` fails validation with a 422 listing the valid tags. A function tool that duplicates a declared hosted tool's name fails with `duplicate_tool_name`.
 - `tool_choice={"type": "search_corpus"}` forces that tool on the first model turn; later turns of the server loop use `auto`. `grep`, `filter_chunks`, `inspect_metadata` and `list_stores` are forceable the same way; `get_chunks` is not.
 
@@ -23,10 +26,10 @@ The six tools the Chat Completions and Responses APIs can run server-side over y
 | Knob | Effect |
 |------|--------|
 | `max_tool_calls` (extension, default 16) | Bounds hosted calls and `prune_context` together; at most 8 server calls run per model turn, extra calls receive a structured error instead of running |
-| How a run ends | On a plain-text reply, or a call to one of your function tools. When `max_tool_calls` or the context window is reached, the model receives once: "You have reached the search limit. Do NOT search further. You must now reply with your final answer to the user query as plain text, with NO tool calls. Base it only on retrieved evidence; if the evidence is insufficient to answer, say so." If it does neither, the completion ends with `finish_reason="length"` (Responses: `status: "incomplete"`, `incomplete_details.reason` = `max_tool_calls` or `context_window`) carrying the text produced so far |
-| Default instructions | With a hosted tool declared and no system or developer text: "You are a search agent over the user's connected stores. Use the search tools you were given to explore the corpus regarding the user's query." Any instruction text you send replaces it entirely. The harness still appends its own sections to the system prompt: the context-management contract when `context_management` is declared, and the citation instruction when a declared tool sets `citations` |
+| How a run ends | A plain-text reply or a custom function call returns control to you. At its tool/context limit, the server asks the model to answer from available evidence. Failure to finish produces `finish_reason="length"`; Responses uses `status="incomplete"` with the limiting reason |
+| Default instructions | Hosted tools supply default search instructions when no system/developer text is provided. Your instructions replace that default; declared context management and citations can add their own instructions |
 | `usage.prompt_tokens` | Sums every hidden round — tens of thousands of tokens for a few searches; `prompt_tokens_details.cached_tokens` is the prefix-cached part |
-| `store` | Defaults to `true`; send `False` unless a later turn continues this one. `false` retains no conversation content — operational model and token metadata is still recorded |
+| `store` | Defaults to `true`; use it for stored continuation, or `False` for an independent request whose conversation content should not be retained |
 
 ## What comes back
 
@@ -41,7 +44,7 @@ The six tools the Chat Completions and Responses APIs can run server-side over y
 | `inspect_metadata_call` | `store` | `facets` | always returned |
 | `list_stores_call` | `cursor` | `stores[]` (`name`, `description`, `connectors`), `has_more`, `next_cursor` | always returned |
 
-`store` is filled in only when the request left the scope open. Chunk payloads are kept in the stored completion either way; the `include` key decides only whether they come back on the wire. `include: ["transcript"]` returns the full stored conversation.
+`store` is filled in only when the request left the scope open. When storing, chunk payloads remain available for continuation; `include` controls whether they also come back on the wire. `include: ["transcript"]` returns the full stored conversation.
 
 | In a `results` entry | Meaning |
 |----------------------|---------|
@@ -56,146 +59,82 @@ The six tools the Chat Completions and Responses APIs can run server-side over y
 
 The answer itself is the ordinary `content` of the message; `context_management.applied_edits` reports prunes when `context_management` was declared.
 
-## Complete example
+## Request examples
 
-Python (`pip install openai`):
+With the clients configured as in SKILL.md, Python sends Mixedbread extension fields in `extra_body`:
 
 ```python
-import os
-from openai import OpenAI
-
-client = OpenAI(base_url="https://api.mixedbread.com/v1", api_key=os.environ["MXBAI_API_KEY"])
-
-
-def ask(query: str, *, store: str) -> dict:
-    """One request: the answer, every hosted call the API ran, the chunks it retrieved, what it pruned."""
-    completion = client.chat.completions.create(
-        model="toast-1",
-        messages=[{"role": "user", "content": query}],
-        tools=[
-            {"type": "search_corpus", "store_identifiers": [store]},
-            {"type": "grep", "store_identifiers": [store]},
-        ],
-        temperature=0.7,
-        top_p=0.95,
-        store=False,                                   # nothing continues this completion
-        extra_body={                                   # extension fields ride in extra_body
-            "max_tool_calls": 8,
-            "include": ["search_corpus_call.results", "grep_call.results"],
-            "context_management": {"edits": [{"type": "prune_context"}]},
-        },
-    )
-    extra = completion.model_extra or {}
-    return {
-        "answer": completion.choices[0].message.content or "",
-        "finish_reason": completion.choices[0].finish_reason,      # "length": budget spent, no answer
-        "evidence": [
-            {"call": call["type"], "status": call["status"], "error": call.get("error"),
-             "chunks": [c["chunk_id"] for c in call.get("results") or []]}
-            for call in extra.get("hosted_tool_calls") or []
-        ],
-        "context_edits": (extra.get("context_management") or {}).get("applied_edits") or [],
-        "prompt_tokens": completion.usage.prompt_tokens,
-    }
+completion = client.chat.completions.create(
+    model="toast-1",
+    messages=[{"role": "user", "content": "Which products cost less than 100?"}],
+    tools=[{"type": "search_corpus", "store_identifiers": ["product-catalog"]}],
+    temperature=0.7, top_p=0.95, store=False,
+    extra_body={"max_tool_calls": 8, "include": ["search_corpus_call.results"],
+                "context_management": {"edits": [{"type": "prune_context"}]}},
+)
+if completion.choices[0].finish_reason == "length":
+    raise RuntimeError("Search was incomplete; adjust the budget or report the partial result explicitly")
+print(completion.choices[0].message.content)
+for call in (completion.model_extra or {}).get("hosted_tool_calls") or []:
+    print(call["type"], call["status"], call.get("error"), call.get("results"))
 ```
 
-TypeScript (`npm install openai`):
+TypeScript sends extensions inline; the cast allows tool types outside the OpenAI SDK's types:
 
 ```typescript
-import OpenAI from 'openai';
-
-const client = new OpenAI({
-  baseURL: 'https://api.mixedbread.com/v1',
-  apiKey: process.env.MXBAI_API_KEY!,
-});
-
-// Hosted tool types, include, max_tool_calls, and context_management are not in
-// the OpenAI types, so the request is cast; the SDK sends the fields unchanged.
 const completion = await client.chat.completions.create({
   model: 'toast-1',
-  messages: [{ role: 'user', content: 'Which products cost less than 100, and what are their prices?' }],
+  messages: [{ role: 'user', content: 'Which products cost less than 100?' }],
   tools: [{ type: 'search_corpus', store_identifiers: ['product-catalog'] }],
-  include: ['search_corpus_call.results'],
-  max_tool_calls: 8,
+  include: ['search_corpus_call.results'], max_tool_calls: 8,
   context_management: { edits: [{ type: 'prune_context' }] },
-  store: false,
+  temperature: 0.7, top_p: 0.95, store: false,
 } as never);
-
-type HostedCall = {
-  type: string;
-  status: string;
-  error?: { code: string; message: string } | null;
-  // Each item also echoes its own arguments, e.g. `queries` on search_corpus_call.
-  results?: { chunk_id: string; document_id: string; search_score?: number; text?: string }[] | null;
-};
-type AppliedEdit = { type: string; calls?: number; cleared_input_tokens?: number };
-const extra = completion as unknown as {
-  hosted_tool_calls?: HostedCall[];
-  context_management?: { applied_edits?: AppliedEdit[] };
-};
-
+if (completion.choices[0].finish_reason === 'length') throw new Error('Search incomplete');
 console.log(completion.choices[0].message.content);
-for (const call of extra.hosted_tool_calls ?? []) {
-  console.log(call.type, call.status, call.error, (call.results ?? []).map((c) => c.chunk_id));
-}
-for (const edit of extra.context_management?.applied_edits ?? []) {
-  console.log(edit.type, edit.calls, 'calls cleared', edit.cleared_input_tokens, 'input tokens');
-}
+const extra = completion as unknown as { hosted_tool_calls?: unknown[] };
+console.log(extra.hosted_tool_calls);
 ```
 
 ## Hybrid: hosted retrieval, your terminal
 
-Declare hosted tools and your own `submit_ranking` function together. The model may call `submit_ranking` before its budget runs out — that call comes back to you like any function call. At the search limit, though, the server asks for a plain-text answer, so a hosted run that spends its budget ends in prose. The structured payload then takes one forced turn, and that turn can only cite hosted evidence if it continues the stored completion:
+You can declare hosted tools and a custom terminal such as `submit_ranking` together. The model
+may call your terminal during exploration; validate that call against your chosen schema and the
+retrieved evidence. Other custom calls need matching tool results before continuation.
+
+If hosted search ends in prose and you need a structured payload, a forced follow-up is useful.
+Store the search request and include its retrieved results. Assuming `search` has no pending
+function calls, and your application defines `SUBMIT_RANKING` and `validate_submission`:
 
 ```python
-SUBMIT_RANKING = {"type": "function", "function": {
-    "name": "submit_ranking",
-    "description": "Submit the ranked chunks that answer the question and end the search. Call it alone.",
-    "parameters": {"type": "object", "properties": {
-        "chunks": {"type": "array", "items": {"type": "object", "properties": {
-            "chunk_id": {"type": "string", "description": "chunk_id of a retrieved chunk"},
-            "relevance_score": {"type": "number", "minimum": 0, "maximum": 1}},
-            "required": ["chunk_id", "relevance_score"]}},
-        "ranking_strategy": {"type": "string"},
-        "answer": {"type": "string"}},
-        "required": ["chunks", "ranking_strategy", "answer"]}}}
-
-search = client.chat.completions.create(
+final = client.chat.completions.create(
     model="toast-1",
-    messages=[
-        {"role": "system", "content": "Search the store, then end by calling submit_ranking with the "
-                                      "chunks that answer the question and your answer."},
-        {"role": "user", "content": query},
-    ],
-    tools=[{"type": "search_corpus", "store_identifiers": [store]}, SUBMIT_RANKING],
-    store=True,                                     # the forced turn continues this completion
-    extra_body={"max_tool_calls": 8, "include": ["search_corpus_call.results"]},
+    messages=[{"role": "user", "content": "Finish by calling submit_ranking with the retrieved evidence."}],
+    tools=[SUBMIT_RANKING],
+    tool_choice={"type": "function", "function": {"name": "submit_ranking"}},
+    parallel_tool_calls=False, store=True,
+    extra_body={"previous_completion_id": search.id,
+                "context_management": {"edits": [{"type": "prune_context"}]}},
 )
-message = search.choices[0].message
-if message.tool_calls and message.tool_calls[0].function.name == "submit_ranking":
-    submission = json.loads(message.tool_calls[0].function.arguments)
-else:                                               # prose at the search limit
-    final = client.chat.completions.create(
-        model="toast-1",
-        messages=[{"role": "user", "content": "You have reached the search limit. Do NOT search further. Call submit_ranking now."}],
-        tools=[SUBMIT_RANKING],
-        tool_choice={"type": "function", "function": {"name": "submit_ranking"}},
-        parallel_tool_calls=False,
-        store=True,
-        extra_body={"previous_completion_id": search.id},
-    )
-    submission = json.loads(final.choices[0].message.tool_calls[0].function.arguments)
+choice = final.choices[0]
+calls = choice.message.tool_calls or []
+if choice.finish_reason != "tool_calls" or len(calls) != 1 or calls[0].function.name != "submit_ranking":
+    raise RuntimeError("No complete terminal call; recover with a bounded correction")
+submission = validate_submission(calls[0].function.arguments, retrieved_ids)
 ```
 
-Validate `submission["chunks"][*]["chunk_id"]` against the `chunk_id`s in the `include`d results. The forced turn sees the hosted results only through `previous_completion_id`; sent stateless it has nothing to cite. For a ranking-only terminal drop `answer` from `properties` and `required`; for a prose answer over hosted retrieval no terminal is needed. Delete the chain afterwards when retention is not wanted: `client.delete(f"/chat/completions/{search.id}", cast_to=object)`.
+`retrieved_ids` comes from the search's included result payloads. Parse the JSON arguments and
+validate the agreed fields, evidence IDs, and score ranges before accepting the submission.
+The example terminal shapes are in [tool-contracts.md](tool-contracts.md#terminal-tools).
+Stored continuation restores the hosted evidence automatically; a stateless follow-up needs you
+to supply the relevant evidence yourself. If desired, deletion is chain-wide:
+`client.delete(f"/chat/completions/{search.id}", cast_to=object)`.
 
 ## Context management
 
-```python
-extra_body={"context_management": {"edits": [{"type": "prune_context"}]}}
-```
-
-The model gets a `prune_context` tool over hosted results and your function results alike and clears what it considers stale as the run approaches the window; prune calls count against `max_tool_calls`. `context_management.applied_edits` reports one `prune_context` entry per response (`{"type": "prune_context", "calls": 2, "cleared_input_tokens": 5400}`) plus a `truncate_tool_result` entry (with `tool_call_id`) per client tool result shortened in overflow recovery. A hosted run that ends with `finish_reason="length"` for the context window is the signal to declare it. Semantics shared with function-tool loops are in SKILL.md § Context management.
+We recommend enabling server-side pruning for hosted and custom tools alike. See
+[SKILL.md § Context management](../SKILL.md#context-management) for configuration, continuation,
+and stateless behavior. Read `context_management.applied_edits` for pruning and overflow truncation.
 
 ## Streaming
 
@@ -215,8 +154,8 @@ With `stream=True`, each hosted call item arrives on a chunk twice: once with `s
 |---------|-------|-----|
 | Hosted search ran although you meant to bring your own backend | A hosted entry was in `tools` | Declare only `function` tools |
 | `results` is `null` on every hosted call | No `include` | `extra_body={"include": ["search_corpus_call.results"]}` (inline in Node) |
-| Answer says the search limit was reached, or `finish_reason="length"` | `max_tool_calls` or the context window hit | Raise `max_tool_calls`, declare `context_management`, or accept the answer built so far |
+| Answer says the search limit was reached, or `finish_reason="length"` | `max_tool_calls` or the context window hit | Adjust `max_tool_calls` or `context_management`; report any partial answer as incomplete |
 | 422 on `store_identifiers` | Mixed scopes, or an open scope without `list_stores` | One scope for all store tools; add `{"type": "list_stores"}` when omitting `store_identifiers` |
 | 422 `duplicate_tool_name` | A function named like a declared hosted tool | Rename it |
-| Forced `submit_ranking` cites handles that are not in `results` | The forced turn was stateless | `store=True` on the search request, `previous_completion_id` on the forced turn |
+| Forced `submit_ranking` cites handles that are not in `results` | The forced turn was stateless | Continue the stored search, or explicitly supply its evidence to a stateless turn |
 | Chunk with `choices == []` in a stream | Hosted progress chunk | Read `hosted_tool_calls` from it; do not index `choices[0]` |

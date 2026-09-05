@@ -8,8 +8,8 @@ Agent skills for building search, RAG, and document parsing with [Mixedbread](ht
   - `skills/mxbai-cli/` — CLI tool usage
   - `skills/mixedbread-search/` — Stores API & SDKs
   - `skills/mixedbread-parsing/` — Parsing API & OCR
-  - `skills/mixedbread-search-agent/` — Toast-1 Chat Completions API: hosted store tools, function tools, tool contracts & Stores wiring
-  - `skills/mixedbread-search-agent-harness/` — Bring-your-own-backend harness: the bounded loop, runnable reference, testing
+  - `skills/mixedbread-search-agent/` — Toast-1 Chat Completions and Responses APIs: hosted tools, function calls, continuation & context management
+  - `skills/mixedbread-search-agent-harness/` — Adaptable harness design, evidence handling, evaluation, and optional executable examples
 - `.claude-plugin/` — Claude Code plugin configuration
 - `.cursor-plugin/` — Cursor plugin configuration
 - `.mcp.json` — MCP server configuration
@@ -27,7 +27,8 @@ Agent skills for building search, RAG, and document parsing with [Mixedbread](ht
 - Prefer tables and code over prose. State the fact and the fix; cut the explanation of why unless the agent gets it wrong without it
 - Keep `SKILL.md` under 500 lines. Past that, move detail into `references/` and say in the pointer *when* to read each file
 - Do not duplicate broad public API reference docs. Bundle focused behavioral references when a skill depends on non-obvious product or harness contracts, and link public docs for the general surface.
-- The Chat Completions and Responses APIs take two tool kinds: opt-in hosted Stores tools (`search_corpus`, `grep`, `filter_chunks`, `inspect_metadata`, `get_chunks`, `list_stores`) that run server-side, and client `function` tools; without hosted tools a request is one generation over exactly what was sent. `mixedbread-search-agent` covers both and the choice between them; `mixedbread-search-agent-harness` is the bring-your-own-backend loop. Keep function-tool guidance backend-agnostic and isolate the hosted tools and the Stores wiring in their own references.
+- The Chat Completions and Responses APIs support hosted Stores tools and client `function` tools. Without hosted retrieval or server-side context editing, a request performs one generation. `mixedbread-search-agent` owns API contracts; `mixedbread-search-agent-harness` covers adaptable design principles. Keep hosted configuration and custom Stores wiring in separate references.
+- Treat tool names, envelopes, prompts, budgets, and framework choices as preferences. Reserve mandatory language for API contracts, fixed model behavior (including thinking disabled), and the user's application requirements. Recommend server-side pruning for custom harnesses too. Link to the public training harness for implementation detail; keep the optional local keyword-search adapter as the single BM25 example.
 - Verify API behavior against the API reference pages (`/api-reference/endpoints/chat/create-chat-completion.md`, `.../responses/create-response.md`) and the `completions/` examples in `mixedbread-ai/toast-harness` and a live request before asserting it.
 - Skills install as separate plugins, so a relative path into a sibling skill does not resolve. When two skills need the same reference — `tool-contracts.md` is the current case — duplicate the file in full rather than summarizing it in one of them, and update both copies together.
 - The served model id is `toast-1`.

@@ -21,7 +21,9 @@ Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Comple
 - Skill file: [skills/mixedbread-search-agent/SKILL.md](../skills/mixedbread-search-agent/SKILL.md)
 
 ### mixedbread-search-agent-harness
-Build your own harness around Mixedbread's Toast-1 search model with your own retrieval tools: bounded round budgets, parallel tool execution, stable evidence handles, stored-completion continuation and context management, terminal modes, a runnable reference loop, offline tests, and evaluation.
+
+Design a Toast-1 harness around your retrieval backend or framework: parallel exploration, evidence identity, context budgets, adaptable endings, and evaluation. The guidance describes preferences and links to the public training harness; executable examples are optional.
+
 - Skill file: [skills/mixedbread-search-agent-harness/SKILL.md](../skills/mixedbread-search-agent-harness/SKILL.md)
 
 

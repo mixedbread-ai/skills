@@ -81,7 +81,7 @@ Reference the `gemini-extension.json` for extension configuration, or use the `.
 | [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
 | [`mixedbread-parsing`](skills/mixedbread-parsing/SKILL.md) | Parse documents, extract structured content, and run OCR using the Parsing API |
 | [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions and Responses APIs: hosted store tools, function tools, terminal modes, context management |
-| [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Build your own harness around Toast-1: rounds, parallelism, evidence handles, stored-completion continuation, a runnable loop |
+| [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Design a Toast-1 harness for your backend: exploration, evidence handling, context budgets, evaluation, and optional runnable examples |
 
 See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills.
 
@@ -103,7 +103,7 @@ mixedbread-skills/
     ├── mixedbread-search/   # Stores API & SDKs
     ├── mixedbread-parsing/  # Parsing API & OCR
     ├── mixedbread-search-agent/ # Chat Completions + Responses APIs: hosted tools, function tools, Stores wiring
-    └── mixedbread-search-agent-harness/ # Bring-your-own-backend harness loop
+    └── mixedbread-search-agent-harness/ # Adaptable harness guidance and optional examples
 ```
 
 ## Links
