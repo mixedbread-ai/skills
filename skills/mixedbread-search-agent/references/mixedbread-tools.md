@@ -1,20 +1,20 @@
-# Backing the tools with Mixedbread Stores
+# Backing function tools with Mixedbread Stores
 
-Stores are a natural backend for this model: the semantic endpoint is late-interaction retrieval with an optional reranker, and grep, listing, facets, and chunk retrieval cover the remaining primitives.
+For a loop you run yourself with Stores as the backend. Hosted tools are an alternative when you want the API to manage retrieval — see [hosted-tools.md](hosted-tools.md). The examples below show custom function implementations; their names and interfaces are yours to adapt.
 
 Read [tool-contracts.md](tool-contracts.md) for the schemas, envelopes, and descriptions; SKILL.md for the API. This is only the wiring. For building the Stores themselves, use the `mixedbread-search` skill.
 
 ## Which call backs which tool
 
-| Tool you define | Backing call | Matches on |
-| --- | --- | --- |
-| `semantic_search` | `stores.search()` | Meaning and paraphrase |
-| `grep_search` | `POST /v1/stores/grep` | RE2 regex, literal tokens |
-| `list_chunks` | `POST /v1/stores/list-chunks` | Metadata filters, numeric order |
-| `metadata_facets` | `stores.metadata_facets()` | Nothing — it describes the corpus |
-| `expand_chunks` | `stores.files.retrieve()` | Known chunk identity |
+| Tool you define | Backing call | Matches on | Hosted equivalent |
+| --- | --- | --- | --- |
+| `semantic_search` | `stores.search()` | Meaning and paraphrase | `search_corpus` |
+| `grep_search` | `POST /v1/stores/grep` | RE2 regex, literal tokens | `grep` |
+| `list_chunks` | `stores.list_chunks()` | Metadata filters, numeric order | `filter_chunks` |
+| `metadata_facets` | `stores.metadata_facets()` | Nothing — it describes the corpus | `inspect_metadata` |
+| `expand_chunks` | `stores.files.retrieve()` | Known chunk identity | `get_chunks` |
 
-Pin `store_identifiers` inside the implementation from application config. Leaving it out of the tool schema entirely removes hallucinated store names as a failure mode; expose a store argument only when the model genuinely must choose, and pair it with `stores.list()` so it can discover real names.
+For a fixed corpus, pin `store_identifiers` in application config. If the model chooses stores, `stores.list()` can help it discover valid names. Enforce access scope independently of that choice.
 
 ## Client setup
 
@@ -61,9 +61,7 @@ const response = await mxbai.stores.search({
 });
 ```
 
-Keep `rerank` on for production retrieval; it materially improves what the model sees.
-
-Do not combine it with `search_options={"agentic": True}`. Agentic search runs Mixedbread's own Toast-1 harness inside the Search API — it is an alternative to building this loop, not a component of it. Reach for it when you want the model's search behavior with no harness of your own, and for the completions loop when you need control over tools, rounds, or output shape.
+Consider `rerank` for better evidence quality and measure its latency tradeoff. Using `search_options={"agentic": True}` invokes another search-agent loop; use that when you deliberately want nested agentic retrieval, and account for its additional work.
 
 ## Grep
 
@@ -75,7 +73,7 @@ def grep_search(pattern: str, top_k: int = 10) -> dict:
         "/v1/stores/grep",
         body={
             "pattern": pattern,
-            "store_identifiers": STORE_IDENTIFIERS,  # exactly one store per call
+            "store_identifiers": STORE_IDENTIFIERS[:1],  # a list, but grep covers one store per call
             "targets": ["text", "generated"],
             "case_sensitive": False,
             "top_k": top_k,
@@ -87,30 +85,33 @@ def grep_search(pattern: str, top_k: int = 10) -> dict:
 
 ```ts
 const response = await mxbai.post<{ data: Chunk[] }>('/v1/stores/grep', {
-  body: { pattern, store_identifiers: STORE_IDENTIFIERS, top_k: topK },
+  body: { pattern, store_identifiers: STORE_IDENTIFIERS.slice(0, 1), top_k: topK },
 });
 ```
 
 - `pattern` is RE2, up to 1024 characters. Say so in the tool description.
 - `targets` defaults to both `text` and `generated`. Keep both unless deliberately excluding ingestion-derived OCR, transcription, and summary fields.
-- One store per call, and no pagination — raise `top_k` for more matches.
+- `store_identifiers` is schema-typed as a list (1–16 entries) but grep targets a single store: pass one. No pagination — raise `top_k` for more matches.
 
 ## Chunk listing
 
-`POST /v1/stores/list-chunks` selects by metadata instead of by query:
+`stores.list_chunks()` selects by metadata instead of by query, and also targets a single store per call:
 
 ```python
-body = {
-    "store_identifiers": STORE_IDENTIFIERS,  # single store
+kwargs = {
+    "store_identifiers": STORE_IDENTIFIERS[:1],
     "filters": filters,
     "top_k": top_k,
+    "search_options": {"return_metadata": True},   # metadata is what you filter and rank on
 }
 if rank_by:
-    body["sort_by"] = [rank_by, direction == "asc"]
-response = mxbai.post("/v1/stores/list-chunks", body=body, cast_to=object)
+    kwargs["sort_by"] = [rank_by, direction == "asc"]
+response = mxbai.stores.list_chunks(**kwargs)
 ```
 
-`sort_by` takes a field name or `[field, ascending]`. Unprefixed paths target file metadata; `generated_metadata.*` targets chunk metadata. Only sort on numeric fields, and report back how many values were non-numeric or missing rather than failing the call.
+A `sort_by` field the backend cannot order server-side raises `UnprocessableEntityError`. Report the limitation, or use a client-side fallback that clearly states which retrieved subset it ordered.
+
+`sort_by` takes a field name or `[field, ascending]`. Unprefixed paths target file metadata; `generated_metadata.*` targets chunk metadata. For numeric metric ordering, confirm the field's type and report non-numeric or missing values. Other ordering depends on the backend's supported sorts.
 
 ## Metadata facets
 
@@ -119,19 +120,19 @@ facets = mxbai.stores.metadata_facets(store_identifiers=STORE_IDENTIFIERS)
 # {"year": {"2023": 1, "2024": 1}, "author": {"Dana Lee": 1, "Joe Smith": 1}}
 ```
 
-Expose this before any filtering tool. Filter keys that do not exist return nothing silently, so facet discovery is what stops a plausible-looking guess from quietly returning zero results.
+Use facets or metadata on results to confirm unfamiliar filter keys. A nonexistent key can quietly produce zero results.
 
 ## Chunk expansion
 
 ```python
 file = mxbai.stores.files.retrieve(
-    file_identifier,                    # positional
+    file_identifier=file_id,
     store_identifier=STORE_IDENTIFIERS[0],  # this endpoint accepts one store
-    return_chunks=[3, 4, 5],            # or True for every chunk
+    return_chunks=[3, 4, 5],                # or True for every chunk
 )
 ```
 
-Resolve the model's handles to `(file_id, chunk_index)` yourself and validate the range: an index past the end of the file fails with HTTP 422 (`Invalid chunk indices: [0, 1], but must be between 0 and 0`). Clamp and return a structured error instead of letting that reach the model as an exception.
+Resolve evidence references to `(file_id, chunk_index)` and validate the requested range. An out-of-range index fails with HTTP 422; return an informative tool error rather than allowing an exception to escape the executor.
 
 Chunks from this endpoint carry `chunk_index`, `text`, `offset`, and `generated_metadata` but not `file_id` or `filename` — those live on the parent file object, so re-attach them from your registry.
 
@@ -150,14 +151,10 @@ filters = {
 
 Operators: `eq`, `not_eq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `like`, `not_like`, `contains`, `starts_with`, `regex`.
 
-Give the model a flat condition list plus a `filter_mode: "all" | "any"` and build the tree yourself. Apply non-negotiable application scope as a filter the model cannot see or override, and merge it with whatever the model supplies.
+A flat condition list plus `filter_mode: "all" | "any"` can simplify the model's interface; your function can build the tree. Enforce application access scope independently of model-supplied filters.
 
 ## Chunk identity and available fields
 
-`stores.search`, grep, and list-chunks all return the same chunk shape, so one envelope serves all three. Chunk identity is `(store_id, file_id, chunk_index)` on every retrieval endpoint — map it once to a short handle and keep the mapping on the application side.
+`stores.search`, grep, and list-chunks share a chunk shape, so a common envelope can serve all three. Preserve `(store_id, file_id, chunk_index)` as the source identity. Short handles are optional; keep references stable across calls and retain their provenance application-side.
 
-Fields available for the envelope: `text`, `score`, `filename`, `file_id`, `store_id`, `chunk_index`, `offset`, `metadata`, `generated_metadata`, `summary`, `context`, `type`, and `mime_type`.
-
-## A cited answer without a loop
-
-`stores.question_answering()` returns generated text with `<cite i="n"/>` tags plus a `sources` list. Use it when a cited answer over one corpus is the whole requirement, and the completions loop when you need custom tools, round control, or a structured terminal.
+Fields available for the envelope: `text`, `score`, `filename`, `file_id`, `store_id`, `external_id`, `chunk_index`, `offset`, `metadata`, `generated_metadata`, `summary`, `context`, `type`, and `mime_type`. `text` is a text chunk's field; image chunks carry `ocr_text` and audio/video chunks `transcription` instead, so fall back across them when the store is not text-only.

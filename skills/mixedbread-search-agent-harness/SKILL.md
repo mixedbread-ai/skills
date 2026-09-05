@@ -1,204 +1,135 @@
 ---
 name: mixedbread-search-agent-harness
 description: >-
-  Design, implement, review, or tune a custom harness for Mixedbread's Toast-1 search model through
-  the OpenAI-compatible Completions API. Use when building bounded search-agent loops, custom
-  retrieval or answer tools, parallel tool execution, evidence ranking and reporting, stable
-  chunk-handle registries, context pruning, payload budgets, or evaluations for the model as a
-  lookup subagent.
+  Design, implement, review, or tune a custom harness for Mixedbread's Toast-1 search model
+  with your own retrieval backend or agent framework. Use for exploration strategy,
+  parallel execution, evidence identity, context budgets, termination, and retrieval evaluation.
+  For endpoint parameters or hosted Stores tools, use mixedbread-search-agent.
 ---
 
 # Mixedbread Search Agent Harness
 
-Toast-1 is Mixedbread's search model: a deep search and lookup agent trained to gather multi-hop evidence and submit ranked results. Build the harness for exploration, tool clarity, stable evidence identity, and bounded context — not for free-form general reasoning.
-
-Scope: everything above one request — rounds, concurrency, evidence identity, context, termination. Use the loop as a fast search sub-agent for an orchestrator doing knowledge work, or as a standalone searcher. Orchestration remains outside this harness. For the API surface underneath (auth, request parameters, response shape, streaming, stored conversations, SDK extension fields), use the `mixedbread-search-agent` skill.
-
 Docs: https://www.mixedbread.com/docs/agent/build-your-own-harness
-Model card: https://www.mixedbread.com/docs/agent/models
-Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
+API: https://www.mixedbread.com/api-reference/endpoints/chat/create-chat-completion
+Model: https://www.mixedbread.com/docs/agent/models
+Public training harness: https://github.com/mixedbread-ai/toast-harness
 
-## The loop
+Toast gathers evidence through tools and returns a ranking, an answer, or both. It can work
+with different retrieval backends, tool sets, output formats, budgets, and agent frameworks.
+The public harness is a useful implementation reference; reproducing it is not a condition
+for good performance. The design guidance below describes preferences to evaluate on your task.
 
-The API is stateless. Send a messages list plus tool schemas; the model returns text or tool calls. On `finish_reason="tool_calls"`, execute the calls, append **one tool message per call**, and resend the whole history. Build that exchange to these rules:
+## API constraints and design choices
 
-- **Budget rounds, terminal included.** The model is trained to work within a bounded number of turns, so state the boundary in the prompt instead of only enforcing it in code. Offer a structured terminal alongside retrieval tools so the model can submit early. On the final fallback, narrow the tool list to the terminal and force it by name; otherwise the model may end in prose without the structured payload. Count the terminal round: a 4-round ceiling permits at most three search rounds before the forced fallback.
-- **Cap parallel calls, answer all of them.** The model fans out by design, and a round costs only the latency of its slowest call. Execute accepted calls concurrently, and emit a tool message for *rejected* calls too — an unanswered `tool_call_id` makes the next request invalid.
-- **Budget payloads.** Clip result text as it enters the history, and bound the round as a whole. Eight uncapped returns in one round cross the input limit on their own.
-- **Manage context in the harness.** Nothing prunes for you. Prune the message list you resend rather than summarizing it, and tell the model when it is over budget — see [Context management](#context-management).
-- **Return every tool result as data.** A tool that raises leaves its call unanswered and breaks the next request; return `{"error": "..."}` so the model corrects itself on the following round.
+The API's accepted schemas and fixed model behavior are constraints: use `toast-1`, keep thinking
+disabled, and stay within the context window and supported parameter ranges. The hosted model
+already disables thinking; `chat_template_kwargs` is not an API setting. When continuing a
+Chat Completions tool turn, supply one result per `tool_call_id`, including failed or rejected
+calls. Stored continuation requires that the preceding completion was stored.
 
-```python
-import asyncio
-import json
+Tool names such as `search_corpus` and `submit_ranking`, short handles, JSON result envelopes,
+prompt wording, round limits, storage strategy, and component layout are design choices.
+Use the `mixedbread-search-agent` skill or the API reference above for wire contracts.
 
+If your corpus is in Mixedbread Stores, hosted retrieval can run the search loop for you.
+For your own backend, declare client `function` tools and execute them in your application.
+A function **named** `search_corpus` calls your implementation; the hosted entry
+`{"type": "search_corpus"}` calls Mixedbread Stores. Hybrid applications can combine hosted
+and custom tools, provided their declared names do not collide.
 
-async def run_episode(client, query: str) -> dict | str | None:
-    metadata_facets, seed_results = await asyncio.gather(
-        fetch_metadata_facets(query),
-        seed_search(query),
-    )
-    bootstrap = {
-        "metadata_facets": metadata_facets,
-        "seed_search_results": seed_results,
-    }
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"User query:\n{query}\n\n"
-                "Pre-round bootstrap context follows. It was fetched before search "
-                "round 1, is not a tool result, and consumes no search round.\n"
-                f"{json.dumps(bootstrap, ensure_ascii=False)}"
-            ),
-        }
-    ]
+## Exploration and tool design
 
-    for round_index in range(MAX_ROUNDS):           # the terminal round is one of these
-        final_round = round_index == MAX_ROUNDS - 1
-        completion = await client.chat.completions.create(
-            model="toast-1",
-            messages=messages,
-            # TOOLS contains only non-terminal schemas. Offer the terminal early;
-            # forcing it on the last round is the fallback, not the first chance.
-            tools=[TERMINAL] if final_round else [*TOOLS, TERMINAL],
-            tool_choice=(
-                {"type": "function", "function": {"name": TERMINAL_NAME}}
-                if final_round
-                else "auto"
-            ),
-            parallel_tool_calls=not final_round,
-            temperature=0.7,
-            top_p=0.95,
-            max_completion_tokens=4096,
-            store=False,
-        )
-        message = completion.choices[0].message
-        calls = list(message.tool_calls or [])
-        terminal_calls = [call for call in calls if call.function.name == TERMINAL_NAME]
-        if terminal_calls:
-            if len(calls) != 1:
-                raise RuntimeError("terminal must be the only call in its turn")
-            return validate_terminal(terminal_calls[0])
-        if final_round:
-            raise RuntimeError("final round did not return exactly one terminal call")
-        if not calls:
-            return message.content                  # finish_reason="stop": the run is done
+- Encourage parallel searches for independent aspects, entities, and alternative wording.
+  Use later rounds for questions that depend on earlier evidence. Wider exploration can reduce
+  latency, but still costs backend capacity and context; choose width and depth together.
+- Describe what each tool actually matches and how to phrase its input. Semantic retrieval
+  benefits from focused natural-language questions; literal lookup needs exact terms or patterns.
+  Adapt descriptions whenever you change the backend.
+- Prefer a small, clear tool surface. Add metadata discovery, filtering, or expansion when the
+  task benefits from them; the training harness's individual tools are not a required checklist.
+- Confirm available metadata before filtering or sorting on it. Keep application access scope
+  enforced by the backend. If a requested sort cannot be applied, report that fact in the result.
+- Optional bootstrap context, such as a seed search or metadata overview, can save exploration.
+  Labeled ordinary context is a simple way to provide it without simulating a model tool turn.
 
-        messages.append(message.model_dump(exclude_none=True))
+Descriptions and example result shapes are in [tool-contracts.md](references/tool-contracts.md).
+The public [prompts](https://github.com/mixedbread-ai/toast-harness/blob/main/src/agent_harness/searcher_prompts.py)
+and [implementation](https://github.com/mixedbread-ai/toast-harness/tree/main/src/agent_harness)
+provide detail when you want to inspect a particular design.
 
-        accepted = calls[:MAX_PARALLEL_CALLS]
-        results = await asyncio.gather(*(execute(call) for call in accepted))
-        rejected = [over_cap_error(call) for call in calls[MAX_PARALLEL_CALLS:]]
+## Evidence identity and context
 
-        # One tool message per emitted call, in the model's original call order.
-        for call, result in zip(calls, [*results, *rejected]):
-            messages.append(
-                {"role": "tool", "tool_call_id": call.id, "content": json.dumps(clip(result))}
-            )
+Keep evidence references stable across tools and rounds, with provenance available to the
+application. Short handles can help, but existing backend IDs also work. Validate cited or
+ranked references against evidence presented to the model.
 
-        messages = prune_if_over_budget(messages)   # edit the list you resend
+Deduplicating ordinary retrieval results across calls often improves coverage and saves context.
+Coordinate deduplication after parallel retrieval, or synchronize shared state. Repeated exact
+lookups can instead return compact references, and expansion can restore previously seen text.
+Deduplication and pruning are separate policies: state whether suppressed evidence can resurface.
 
-    raise RuntimeError("round budget exhausted without a terminal")
-```
+Distinguish evidence that was **presented**, **discarded before presentation**, and **pruned after
+presentation**. Register results as seen after payload trimming; discarded results remain eligible
+for retrieval. Pruning can remove text while preserving identity and a route to re-fetch it.
 
-Bootstrap the episode: fetch metadata facets and one seed search concurrently before round 1, then include both in explicitly labeled ordinary context. Never encode bootstrap evidence as `role="tool"` messages or manufacture an assistant tool-call turn for it: the first model generation is round 1, and bootstrap consumes no round. Read [architecture.md](references/architecture.md) for round-by-round mechanics and [python-loop.md](references/python-loop.md) for the full implementation.
+We recommend the API's server-side pruning even for a fully custom harness. Enable
+`context_management={"edits": [{"type": "prune_context"}]}` on each request. It works over both
+hosted and custom tool responses; you do not need to implement the public harness's pruning tool.
+Stored continuation carries these context edits forward. The API skill's Context management
+section explains continuation and stateless alternatives.
 
-## Operating envelope
+Also bound result payloads and their combined size before sending them. Allocate enough space
+across concurrent calls to avoid one large result consuming the whole round. Under context pressure,
+prefer fewer useful passages over many unreadably short fragments; leave discarded hits eligible
+for later retrieval. Expansion should provide useful additional context; pattern searches should
+retain the matching passage when clipped.
+Prefer pruning stale payloads and keeping stable prompt prefixes where practical. Summarization
+is another option; evaluate its evidence loss, latency, and reference-restoration behavior.
 
-| Knob | Start at | Notes |
-|------|----------|-------|
-| Rounds | 4 total, terminal included | Soft; the model handles 8, 12, or more |
-| Parallel calls per round | 8 | Pruning counts toward the cap |
-| `temperature` / `top_p` | 0.7 / 0.95 | Trained defaults |
-| Thinking | Disabled | Trained and served without it; not optional |
-| Sequence length | 131,072 tokens | Keep every request's input under ~130,000 |
-| Generation | Capped at 4,096 tokens | Size `max_completion_tokens` to the terminal payload |
-| Prune trigger | ~50,000 prompt tokens | Budget notice fires every round past it |
-| Hard prompt ceiling | ~100,000 tokens | Headroom, so a growing round cannot overshoot |
-| Chunk clip | ~2,000 tokens | 4× that for expansion tools |
-| Terminal retries | 2, then fail | Never substitute your own ranking |
+## Ending and budgets
 
-Hold a ceiling with real headroom instead of aiming at the limit: overflow returns an opaque HTTP 500, not a context-length error, so no reactive recovery is possible. Track `usage.prompt_tokens` from each completion to measure how fast the history grows.
+Choose an ending the application can consume. A terminal function such as `submit_ranking` is
+convenient for structured evidence; an ordinary answer can finish a prose workflow. The public
+harness's three modes are examples in [tool-contracts.md](references/tool-contracts.md#terminal-tools).
+Other names and payloads are valid choices.
 
-To grow exploration, **widen the round before deepening the loop**. A round already costs the latency of its slowest call, so parallel width is nearly free; an extra round costs a generation plus the prompt growth that follows it.
+Offer the chosen terminal during exploration so the model can finish when evidence suffices.
+Tell it to ground answers in retrieved evidence and acknowledge gaps. For rankings, compare
+evidence against the user's intent: scores from different retrieval tools are not directly
+comparable, and metric-order requests may need ordering by a value in the evidence.
 
-## Components
+Pick round, call, payload, and correction budgets for your latency and quality needs, and explain
+the chosen limits in the prompt. Count the final answer turn explicitly; any correction allowance
+should also be explicit. A short round marker can make the remaining budget clear. For a structured
+ending at the cap, forcing its function by name is a useful fallback. Validate the payload and
+return clear errors for bounded correction; expose failure if recovery is exhausted.
 
-| Component | Owns |
-|-----------|------|
-| Generation adapter | Messages, tool schemas, sampling, final-turn flag. Keeps harness-only settings off the wire |
-| Tool registry / executor | Name → schema + implementation, argument validation, per-round cap, concurrent execution, structured errors |
-| Evidence registry | Identity → stable `chunk_id` / `document_id`; tracks seen, visible, pruned, restored |
-| Context budgeter | Token counting, clipping, per-call and per-round budgets, redaction of pruned payloads |
-| Episode controller | Bootstrap, round loop, termination, terminal validation and retry |
+The public harness's defaults are starting points, not model limits. Likewise, `temperature=0.7`
+and `top_p=0.95` are recommended sampling values, not fixed requirements. Tool schemas, input,
+results, and output share the context window; leave headroom for the next generation.
 
-## Evidence identity
+## Examples and evaluation
 
-Assign a short handle (`c12`, not a UUID) at first sight and never reassign it. For better search diversity, consider deduplicating ordinary search results against evidence already shown to the agent; the backend does not do cross-call deduplication for you.
+Use [python-loop.md](references/python-loop.md) when you want a small runnable Python example.
+It is optional: keep your existing framework or build a different loop when that fits your application.
+The upstream [API examples](https://github.com/mixedbread-ai/toast-harness/tree/main/completions)
+show other arrangements of retrieval and orchestration; check API fields against current docs.
 
-Accept only handles you actually emitted in expansion, pruning, and terminal tools. Validate the final submission against the registry rather than trusting the enum, and never silently substitute a harness ranking for the model's.
-
-## Context management
-
-- **Prune, do not summarize.** Inference is optimized for a stable prompt prefix with stale payloads removed. A summary rewrites the prefix and pays generation latency to lose evidence detail.
-- **Tell the model.** State the pruning contract in the system prompt, then append a budget notice every round past the trigger: the estimated token count, the tool to call, that pruning may run **in parallel** with searches, and that finishing is the other valid answer. Copy the exact message from [reference-harness.md](references/reference-harness.md).
-- **Preserve handles after pruning.** Remove content, not identity.
-- **Keep the prefix byte-stable.** A clock time or a full-precision score in the prompt changes every request and invalidates the cache on its own.
-- **Never combine pruning with `previous_completion_id` in one turn.** That field restores context only while the messages extend the stored history unchanged; a pruned history silently falls back to text-only.
-
-## Tool design
-
-Write descriptions as operating instructions: name the matching mechanism (semantic, BM25, RE2 regex, metadata filter, lookup), the preferred input form, and one contrasting misuse. Keep arguments flat, snake_case, and JSON-native; use `Literal`/enum for closed modes; publish bounds in the description. In Python, docstrings become tool descriptions and `Annotated` strings become parameter descriptions.
-
-Return JSON objects carrying the echoed query, candidate count, and results — never prose. Read [tool-contracts.md](references/tool-contracts.md) for the full contracts.
-
-## Evaluation
-
-Record per episode: rounds and calls per round; prompt, completion, and peak input tokens as reported by `usage`; per-tool latency and the slowest call per round; queries, result counts, duplicate suppression, clipping, truncation, pruning; rounds that passed the budget trigger without pruning or submitting; invalid arguments, structured recoveries, forced-terminal attempts, unresolved IDs; final ranked IDs, scores, and nDCG/recall.
-
-Compare on fixed queries and fixed corpus snapshots. Raise depth, width, or payload limits one dimension at a time.
-
-## Don't
-
-- Don't name a harness tool `submit_answer`. Reserved — HTTP 422.
-- Don't detect prose termination by tool name. A prose run finishes with `finish_reason="stop"` and content; a structured terminal may be selected early when offered and must be accepted when it is the only call.
-- Don't let a tool exception escape the executor, or leave an assistant tool call without a matching tool message.
-- Don't substitute a harness ranking for the model's submission. Validate against the registry, retry bounded, then fail.
-- Don't enable thinking, or build logic on `reasoning_content`.
-- Don't reach for the terminal with prompt wording alone. `tool_choice="required"` produces no visible call either — force it by name.
-- Don't prune silently, and don't wait for the ceiling. A budget notice missing "this may run in parallel" costs a whole search round.
-- Don't execute independent calls serially.
-- Don't leave payloads uncapped. Eight uncapped returns in one round fill the context before the third.
-- Don't count the terminal turn outside the round budget. A 3-round ceiling permits at most two searches before the forced fallback.
-- Don't attach an instruction to the round label. "Search round 2 of max 4" as bare state; a nudge to submit teaches the model to wait for the countdown.
-- Don't encode pre-round bootstrap evidence as tool messages or synthetic assistant tool calls. Label it as bootstrap context and start the round counter with the first model generation.
-- Don't let expansion tools return as little text as search. At ~4× the clip they are worth calling; below that they are not.
-- Don't let the model filter on unconfirmed metadata, or rank on fields not confirmed numeric.
-- Don't reorder tool messages relative to the model's call order, even when execution finishes out of order.
-- Don't force the model to consume every round after it has enough evidence.
+Use scripted responses to check protocol handling, terminal validation, parallel deduplication,
+payload limits, and unseen versus pruned evidence. Then compare prompts and tools on fixed queries
+and corpus snapshots. Track retrieval quality (recall/nDCG), answer grounding when relevant,
+end-to-end and per-tool latency, input/output tokens, duplicates, clipping/truncation, context edits,
+and forced endings. Choose improvements from measured task performance.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| Loop exhausts its round budget every episode | Termination detected by tool name | Treat `finish_reason="stop"` with content as the ending |
-| Structured runs always consume every round | Terminal offered or handled only on the final round | Offer it alongside retrieval tools, accept it early as the sole call, and force it only on the final fallback |
-| Model treats bootstrap as a completed search round | Bootstrap encoded as tool protocol messages | Send labeled ordinary pre-round context; do not synthesize assistant calls or `role="tool"` results |
-| Opaque HTTP 500 mid-episode | Input over the sequence length | Hold a hard ceiling near 100,000 and clip round payloads into it |
-| Terminal returns prose | Not forced by name | `tool_choice={"type": "function", "function": {"name": ...}}` |
-| Model ignores the context limit | No budget signal reaches it | Contract in the system prompt + a per-round notice naming the token count |
-| A budget notice costs a whole search round | Notice does not say pruning can run in parallel | Say it explicitly, and note that pruning counts toward the call cap |
-| Latency spikes with no quality gain | Serial execution, or depth added instead of width | Run calls concurrently; raise parallel calls before rounds |
-| Prefix cache hit rate collapses | Timestamp, full-precision score, or summarized history in the prompt | UTC date only, round scores, prune instead of summarizing |
-| Context full after 2-3 rounds | Uncapped tool payloads | Clip to ~2,000 tokens per result and bound the round |
-| Model re-searches ground it covered | Results carry no stable handles | Assign short handles at first sight and never reassign |
-| Model re-requests pruned evidence | Prune semantics never stated | Say whether pruned chunks can resurface and which tool restores them |
-| One large payload starves the round | No per-call budget | Spread-truncate in presentation order with a per-item floor |
-
-## References
-
-- [architecture.md](references/architecture.md) — read before designing or reviewing a loop: round choreography, parallel execution, context management, and evidence identity.
-- [tool-contracts.md](references/tool-contracts.md) — read before defining tool schemas or result envelopes.
-- [python-loop.md](references/python-loop.md) — read when implementing the loop with the OpenAI Python client.
-- [reference-harness.md](references/reference-harness.md) — read when choosing budgets, prompts, or pruning policy, or when a run burns rounds, clips evidence, or ignores the context limit. What Mixedbread's production harness does, and why.
+| Symptom | Check |
+|---------|-------|
+| Repeated searches yield the same evidence | Stable identity and deduplication across calls, including concurrent ones |
+| Irrelevant results after a backend change | Tool descriptions and query guidance match the new retrieval mechanism |
+| Relevant matches disappear from results | Clipping retains the useful passage; discarded results are not registered as seen |
+| Context grows too quickly | Aggregate payload limits, server-side pruning, and duplicate content |
+| Every run needs a forced ending | The terminal is available during exploration and the prompt explains when to finish |
+| Partial answer is treated as final | Check `finish_reason`; `length` is incomplete even when content is non-empty |
+| Invalid tool turn on continuation | One result for every emitted call ID; only new messages with stored continuation |
+| More calls add cost without quality | Measure overlap, independent coverage, and whether another sequential hop is needed |

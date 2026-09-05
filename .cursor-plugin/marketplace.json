@@ -5,7 +5,7 @@
     "email": "support@mixedbread.com"
   },
   "metadata": {
-    "version": "1.1.0",
+    "version": "1.2.1",
     "description": "Agent skills for search, RAG, parsing, completions, and model harnesses with Mixedbread."
   },
   "plugins": [
@@ -56,10 +56,10 @@
     },
     {
       "name": "mixedbread-search-agent",
-      "description": "Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions API: auth, parameters, tool calls, streaming, stored conversations.",
+      "description": "Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions and Responses APIs: hosted store tools, function tools, extension fields, terminal modes, context management, streaming, stored conversations.",
       "source": "./skills/mixedbread-search-agent",
       "skills": ["./"],
-      "version": "1.0.0",
+      "version": "1.1.1",
       "author": {
         "name": "Mixedbread"
       },
@@ -67,14 +67,14 @@
       "repository": "https://github.com/mixedbread-ai/skills",
       "license": "Apache-2.0",
       "logo": "public/logo_mb_square.svg",
-      "keywords": ["search-agent", "model-api", "tool-calling", "retrieval-tools"]
+      "keywords": ["search-agent", "model-api", "hosted-tools", "tool-calling", "retrieval-tools"]
     },
     {
       "name": "mixedbread-search-agent-harness",
-      "description": "Build the loop around Mixedbread's Toast-1 search model: round budgets, parallel execution, evidence handles, pruning, terminals.",
+      "description": "Design a Toast-1 harness for your backend or framework: exploration, evidence handling, context budgets, and evaluation, with optional runnable examples.",
       "source": "./skills/mixedbread-search-agent-harness",
       "skills": ["./"],
-      "version": "1.0.1",
+      "version": "1.1.1",
       "author": {
         "name": "Mixedbread"
       },

@@ -2,3 +2,6 @@
 node_modules/
 .env
 benchmark-results/
+__pycache__/
+*.pyc
+.ruff_cache/
