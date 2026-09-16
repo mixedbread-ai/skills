@@ -21,6 +21,16 @@ examples; its internal schemas are not the hosted API contract.
 - Unknown fields on an entry are ignored; a wrong `type` fails validation with a 422 listing the valid tags. A function tool that duplicates a declared hosted tool's name fails with `duplicate_tool_name`.
 - `tool_choice={"type": "search_corpus"}` forces that tool on the first model turn; later turns of the server loop use `auto`. `grep`, `filter_chunks`, `inspect_metadata` and `list_stores` are forceable the same way; `get_chunks` is not.
 
+## The web store
+
+`mixedbread/web` is a store identifier that searches the web. Only `search_corpus` reads it; `grep`, `filter_chunks` and `get_chunks` drop it from their scope. Name it alone, or beside your own stores in one entry to search both:
+
+```python
+tools=[{"type": "search_corpus", "store_identifiers": ["mixedbread/web", "product-catalog"], "citations": True}]
+```
+
+A web hit comes back like any chunk: its `filename` is the page URL, and `metadata.url` carries it too. With `citations: true` a cited page becomes a `file_citation` whose `filename` is that URL. The web is dated evidence; when recency matters, say what "now" is in your instructions rather than trusting the model's sense of the date. Runnable: [web-search.py](../examples/web-search.py), [web-search.ts](../examples/web-search.ts).
+
 ## Budget, ending, cost
 
 | Knob | Effect |
@@ -142,11 +152,17 @@ With `stream=True`, each hosted call item arrives on a chunk twice: once with `s
 
 ## Citations
 
-| Mechanism | Behavior |
-|-----------|----------|
-| `citations: true` on `search_corpus`, `grep`, or `filter_chunks` | Appends a citation instruction to the system prompt, so the answer cites as `<cite i="..."/>`. The `i` refers to a result `index` field that hosted chunk payloads do not carry — to resolve a citation back to a chunk, prompt for the `chunk_id` format below instead |
-| Prompted inline format | A system-prompt instruction such as "cite as [chunk_id]" works over hosted results, in prose endings and in a forced terminal alike |
-| `stores.question_answering()` | Returns `<cite i="n"/>` tags plus a `sources` list without a completions call; see the `mixedbread-search` skill |
+`citations: true` on `search_corpus`, `grep` or `filter_chunks` has the model cite the evidence it read inline. The server strips the markers from the answer and returns them as `file_citation` annotations, one per cited chunk:
+
+| Field | Meaning |
+|-------|---------|
+| `type` | `"file_citation"` |
+| `file_id`, `filename` | The cited file; for a web hit the filename is the page URL |
+| `index` | Character offset into the answer text where the marker stood |
+| `chunk_id` | `"<file_id>:<chunk_index>"`, the same reference the hosted results carry, so the cited text is on the included result |
+| `store_id` | The store whose index holds the chunk |
+
+Where they land: on Chat Completions, `choices[0].message.annotations`; on Responses, the `annotations` of the message item's `output_text` part. A cited answer sent back as history keeps its annotations. Evidence without a chunk behind it — a function result or an MCP result — is cited without an annotation; when those answers must link out, ask for inline markdown links in the instructions ([mcp-tools.md](mcp-tools.md)). `stores.question_answering()` is the no-completions alternative: `<cite i="n"/>` tags plus a `sources` list; see the `mixedbread-search` skill. Runnable: [store-search.py](../examples/store-search.py), [store-search.ts](../examples/store-search.ts).
 
 ## Gotchas
 
@@ -159,3 +175,5 @@ With `stream=True`, each hosted call item arrives on a chunk twice: once with `s
 | 422 `duplicate_tool_name` | A function named like a declared hosted tool | Rename it |
 | Forced `submit_ranking` cites handles that are not in `results` | The forced turn was stateless | Continue the stored search, or explicitly supply its evidence to a stateless turn |
 | Chunk with `choices == []` in a stream | Hosted progress chunk | Read `hosted_tool_calls` from it; do not index `choices[0]` |
+| Answer has no `annotations` | `citations` not set on the tool, or the evidence came from function or MCP results | Set `citations: true` on the store tools; instruct inline links for the rest |
+| `grep` finds nothing on the web | Only `search_corpus` reads `mixedbread/web` | Use `search_corpus` for web queries |

@@ -17,7 +17,7 @@ Parse documents, extract structured content, and run OCR using the Mixedbread Pa
 - Skill file: [skills/mixedbread-parsing/SKILL.md](../skills/mixedbread-parsing/SKILL.md)
 
 ### mixedbread-search-agent
-Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions and Responses APIs. Choose between the hosted store tools (server-side search over Mixedbread Stores in one request) and your own function tools; authentication, request parameters and extension fields, response shape, answering tool calls, structured terminals, streaming, and stored conversations. Includes backend-agnostic tool contracts and the Mixedbread Stores wiring.
+Call Mixedbread's Toast-1 search model through the OpenAI-compatible Chat Completions and Responses APIs. Choose between the hosted store tools (server-side search over Mixedbread Stores and the web in one request), remote MCP servers, and your own function tools; citations, authentication, request parameters and extension fields, response shape, answering tool calls, structured terminals, streaming, and stored conversations. Includes backend-agnostic tool contracts, the Mixedbread Stores wiring, and runnable examples.
 - Skill file: [skills/mixedbread-search-agent/SKILL.md](../skills/mixedbread-search-agent/SKILL.md)
 
 ### mixedbread-search-agent-harness
