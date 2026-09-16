@@ -2,8 +2,9 @@
 name: mixedbread-search-agent
 description: >-
   Call Mixedbread's Toast-1 model through the Chat Completions and Responses APIs.
-  Use for hosted Stores tools, custom function calls, authentication, endpoint parameters,
-  streaming, stored continuation, context management, and API errors.
+  Use for hosted Stores tools, web search, remote MCP servers, citations, custom function
+  calls, authentication, endpoint parameters, streaming, stored continuation, context
+  management, and API errors.
   For custom harness design and retrieval evaluation, use mixedbread-search-agent-harness.
 ---
 
@@ -27,6 +28,10 @@ Agent-readable docs: https://www.mixedbread.com/docs/llms.txt
 | You want | Do | Read |
 |----------|----|------|
 | Search-grounded answers over Stores, no retrieval code | One request with hosted tools in `tools`; the answer is the text | [Hosted store tools](#hosted-store-tools), [hosted-tools.md](references/hosted-tools.md) |
+| The web as a source, alone or beside your stores | `search_corpus` with `"mixedbread/web"` in `store_identifiers` | [hosted-tools.md § The web store](references/hosted-tools.md#the-web-store) |
+| Answers that point at the chunks they used | `citations: true` on the store tools; read the `file_citation` annotations | [hosted-tools.md § Citations](references/hosted-tools.md#citations) |
+| A remote MCP server's tools, run server-side (Responses only) | One `mcp` entry per server | [mcp-tools.md](references/mcp-tools.md) |
+| A runnable starting point | Copy the matching file from `examples/` | [examples/README.md](examples/README.md) |
 | Hosted retrieval plus your own functions or a structured ending | Combine hosted and function tools; handle returned function calls and force a terminal if needed | [hosted-tools.md § Hybrid](references/hosted-tools.md#hybrid-hosted-retrieval-your-terminal) |
 | Your own backend and your own loop | Declare only `function` tools and run a bounded loop | `mixedbread-search-agent-harness` skill, [tool-contracts.md](references/tool-contracts.md) |
 | Your own loop with Stores as the backend | Function tools wired to the Stores API | [mixedbread-tools.md](references/mixedbread-tools.md) |
@@ -136,7 +141,9 @@ edits = ((completion.model_extra or {}).get("context_management") or {}).get("ap
 
 Declare hosted tools only when you want server-side retrieval over Mixedbread Stores. They can be
 combined with custom functions under different names. Read [hosted-tools.md](references/hosted-tools.md)
-for store scope, tool-entry fields, returned evidence, citations, and a hybrid terminal recipe.
+for store scope, tool-entry fields, returned evidence, the web store, citations, and a hybrid terminal
+recipe. Remote MCP servers are declared the same way on the Responses API; read
+[mcp-tools.md](references/mcp-tools.md).
 
 ## Function tools
 
@@ -296,7 +303,9 @@ Streaming emits the standard semantic events plus `response.output_item.added`/`
 
 ## References
 
-- [hosted-tools.md](references/hosted-tools.md) — read when declaring hosted store tools: per-tool fields and defaults, call item and result shapes, `include`, streaming, citations, the hybrid recipe, complete Python and TypeScript examples.
+- [hosted-tools.md](references/hosted-tools.md) — read when declaring hosted store tools: per-tool fields and defaults, call item and result shapes, `include`, streaming, the web store, citations, the hybrid recipe, complete Python and TypeScript examples.
+- [mcp-tools.md](references/mcp-tools.md) — read when declaring a remote MCP server on the Responses API: entry fields, approval, output items, gotchas.
+- [examples/](examples/README.md) — runnable Responses requests in Python and TypeScript: store search with citations, web search, MCP docs search, a function tool loop.
 - [tool-contracts.md](references/tool-contracts.md) — optional backend-agnostic guidance for descriptions, evidence envelopes, errors, and terminal formats.
 - [mixedbread-tools.md](references/mixedbread-tools.md) — read when backing function tools with Mixedbread Stores yourself: the call behind each primitive, filters, chunk identity, gotchas.
 
@@ -320,3 +329,5 @@ Streaming emits the standard semantic events plus `response.output_item.added`/`
 | `finish_reason="length"` on a hosted run, no answer | Tool-call or context budget spent without a plain-text reply | Raise `max_tool_calls`, or declare `context_management` |
 | `previous_completion_id` seems ignored | Prior call used `store=False`, or the resent history was edited | Store the completion you continue; after your own edits resend everything without it |
 | `TypeError` on `function.arguments` | Treated as a dict | It is a JSON string — parse it |
+| Responses run ends with `mcp_approval_request` items | `require_approval` defaults to `"always"` | Set `"never"` (or a `never` filter) on the `mcp` entry |
+| `mcp` entry rejected | Sent to Chat Completions, or without `server_url` | MCP is Responses-only and needs `server_url` |

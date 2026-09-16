@@ -80,7 +80,7 @@ Reference the `gemini-extension.json` for extension configuration, or use the `.
 | [`mxbai-cli`](skills/mxbai-cli/SKILL.md) | Manage stores, upload files, search, and sync using the `mxbai` CLI |
 | [`mixedbread-search`](skills/mixedbread-search/SKILL.md) | Create and search managed knowledge bases using the Stores API and SDKs |
 | [`mixedbread-parsing`](skills/mixedbread-parsing/SKILL.md) | Parse documents, extract structured content, and run OCR using the Parsing API |
-| [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions and Responses APIs: hosted store tools, function tools, terminal modes, context management |
+| [`mixedbread-search-agent`](skills/mixedbread-search-agent/SKILL.md) | Call Mixedbread's Toast-1 search model through the Chat Completions and Responses APIs: hosted store tools, web search, remote MCP servers, citations, function tools, terminal modes, context management; runnable examples |
 | [`mixedbread-search-agent-harness`](skills/mixedbread-search-agent-harness/SKILL.md) | Design a Toast-1 harness for your backend: exploration, evidence handling, context budgets, evaluation, and optional runnable examples |
 
 See [SKILL_TREE.md](SKILL_TREE.md) for a navigable index of all skills.
