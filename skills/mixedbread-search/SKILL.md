@@ -357,7 +357,7 @@ const results = await mxbai.stores.search({
 - `agentic: true` — enable with defaults.
 - `agentic: { ... }` — use the currently active request controls:
   - `instructions` (string, up to 5000 chars) — additional retrieval and ranking guidance. Tell the agent which entities, metrics, time ranges, source types, or authority rules matter and what to ignore. The top-level `query` remains the user's question.
-  - `strict_top_k` (boolean, default `true` if `top_k` is set, else `false`): when `true`, the agent fills the ranking to `top_k` chunks from what it retrieved and the result is capped at `top_k`; fewer are returned when the agent retrieved fewer. Requires `top_k`. When `false`, the agent returns only the chunks it considers relevant, at most `top_k` when it is set. Set it to `false` when precision matters and non-relevant chunks must stay out of the result.
+  - `strict_top_k` (boolean, default `true` if `top_k` is set, else `false`): when `true`, the agent returns the `top_k` most relevant chunks it found, fewer only if it found fewer. Requires `top_k`. When `false`, the agent returns only the chunks it considers relevant, at most `top_k` when it is set. Set it to `false` when precision matters and non-relevant chunks must stay out of the result.
 
 The managed harness honors the top-level `query`, `store_identifiers`, `top_k`, `filters`, and `file_ids`. `filters` and `file_ids` are hard scope constraints ANDed into every retrieval the agent makes, while `instructions` are soft planning and ranking guidance.
 
